@@ -38,7 +38,7 @@
 ## ⚡ Быстрый старт
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/ВАШ_ЮЗЕРНЕЙМ/n8n-beget-install/main/install.sh)
+bash <(curl -s https://raw.githubusercontent.com/kalininlive/n8n-beget-install/main/install.sh)
 ```
 (после загрузки скрипт автоматически всё установит и настроит)
 
