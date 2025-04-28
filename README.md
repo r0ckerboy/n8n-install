@@ -39,4 +39,4 @@ bash <(curl -fsSL https://raw.githubusercontent.com/kalininlive/n8n-beget-instal
 
 Свободный порт 80/443
 
-Made with ❤️ by kalininlive
+**Made with ❤️ by kalininlive**
