@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== Установка n8n ==="
+echo "=== 🚀 Установка n8n + всё необходимое на $(hostname) ==="
 
-# 👉 Запрашиваем данные у пользователя
+# 👉 Запрашиваем данные у пользователя:
 read -p "Введите домен для n8n (например n8n.example.com): " DOMAIN
 read -p "Введите email для получения SSL-сертификата: " EMAIL
 read -p "Введите токен вашего Telegram-бота: " TG_BOT_TOKEN
 read -p "Введите ваш Telegram User ID: " TG_USER_ID
-read -p "Введите пароль для базы Postgres: " POSTGRES_PASSWORD
+read -p "Введите пароль для базы данных Postgres: " POSTGRES_PASSWORD
 
-# Список статических директорий
+# Статические папки
 STATIC_DIRS=("files" "backups" "public")
 
-# Установка утилит
+# 1) Установка системных утилит + мультимедиа пакетов
 apt update && apt upgrade -y
-apt install -y ca-certificates curl gnupg lsb-release ufw uuid-runtime openssl git
+apt install -y ca-certificates curl gnupg lsb-release ufw uuid-runtime openssl git ffmpeg imagemagick python3 python3-pip libavcodec-extra
 
-# Установка Docker и Compose
+# 2) Установка Docker и Compose
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
@@ -25,34 +25,32 @@ if ! docker compose version &>/dev/null; then
   apt install -y docker-compose-plugin
 fi
 
-# Генерация ключа шифрования
-if command -v uuidgen &>/dev/null; then
-  N8N_ENCRYPTION_KEY=$(uuidgen)
-else
-  N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
-fi
-echo "→ Ключ шифрования: $N8N_ENCRYPTION_KEY"
+# 3) Генерация ключа для шифрования
+N8N_ENCRYPTION_KEY=$(uuidgen || openssl rand -hex 32)
+echo "→ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
 
-# Настройка брандмауэра
+# 4) Настройка Firewall
 ufw allow OpenSSH
 ufw allow http
 ufw allow https
 ufw --force enable
 
-# Создание директорий
+# 5) Создание директорий
 BASE="/opt/n8n"
 mkdir -p "$BASE"/{n8n_data,traefik_data,static,bot}
 for d in "${STATIC_DIRS[@]}"; do mkdir -p "$BASE/static/$d"; done
 touch "$BASE/traefik_data/acme.json"
 chmod 600 "$BASE/traefik_data/acme.json"
 
-# Docker сеть и тома
+# 6) Создание Docker-сети и томов
 docker network create n8n || true
 docker volume create n8n_db_storage || true
 docker volume create n8n_n8n_storage || true
 docker volume create n8n_redis_storage || true
 
-# Запуск Postgres
+# 7) Запуск контейнеров
+
+## Postgres
 docker run -d --name n8n-postgres --restart always --network n8n \
   -e POSTGRES_USER=user \
   -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -60,12 +58,12 @@ docker run -d --name n8n-postgres --restart always --network n8n \
   -v n8n_db_storage:/var/lib/postgresql/data \
   postgres:15-alpine
 
-# Запуск Redis
+## Redis
 docker run -d --name n8n-redis --restart always --network n8n \
   -v n8n_redis_storage:/data \
   redis:7-alpine
 
-# Запуск Traefik
+## Traefik
 docker run -d --name n8n-traefik --restart always --network n8n \
   -p 80:80 -p 443:443 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
@@ -79,7 +77,7 @@ docker run -d --name n8n-traefik --restart always --network n8n \
     --certificatesresolvers.le.acme.email="$EMAIL" \
     --certificatesresolvers.le.acme.storage=/acme.json
 
-# Запуск nginx для статики
+## nginx статика
 docker run -d --name n8n-static --restart always --network n8n \
   -v "$BASE/static":/usr/share/nginx/html:ro \
   -l "traefik.enable=true" \
@@ -89,7 +87,7 @@ docker run -d --name n8n-static --restart always --network n8n \
   -l "traefik.http.services.static.loadbalancer.server.port=80" \
   nginx:alpine
 
-# Запуск n8n
+## n8n
 docker run -d --name n8n-app --restart always --network n8n \
   -l "traefik.enable=true" \
   -l "traefik.http.routers.n8n.rule=Host(\"$DOMAIN\")" \
@@ -118,13 +116,12 @@ docker run -d --name n8n-app --restart always --network n8n \
   -v "$BASE/n8n_data/backups":/backups \
   docker.n8n.io/n8nio/n8n:1.90.2
 
-# Подтягиваем папку бота с GitHub
+# 8) Telegram-бот (папка bot с GitHub)
 cd "$BASE"
 git clone https://github.com/kalininlive/n8n-beget-install.git tmp-bot
 cp -r tmp-bot/bot/* bot/
 rm -rf tmp-bot
 
-# Сборка и запуск Telegram-бота
 cd "$BASE/bot"
 docker build -t n8n-admin-tg-bot .
 docker run -d --name n8n-admin-tg-bot --restart always --network host \
