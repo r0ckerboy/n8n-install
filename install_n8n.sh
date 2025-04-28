@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 0) — Запрашиваем у пользователя параметры
+# ---------------------------------------------------
+# install_n8n.sh — установка n8n + Traefik + Postgres + Redis
+# + статические папки + Telegram-бот
+# ---------------------------------------------------
+
+### 1) — Запрос параметров у пользователя
 read -p "1) Ваш домен (например: n8n.example.com): " DOMAIN
 read -p "2) E-mail для ACME (Let's Encrypt): " EMAIL
 read -p "3) Логин BASIC auth для n8n: " BASIC_AUTH_USER
@@ -9,9 +14,9 @@ read -s -p "4) Пароль BASIC auth для n8n: " BASIC_AUTH_PASS; echo
 read -p "5) Telegram BOT_TOKEN: " TG_BOT_TOKEN
 read -p "6) Ваш TG_USER_ID: " TG_USER_ID
 read -s -p "7) Пароль для Postgres: " POSTGRES_PASSWORD; echo
-read -p "8) Введите через пробел имена статических папок (они будут доступны по https://$DOMAIN/static/<имя>): " -a STATIC_DIRS
+read -p "8) Имена статических папок через пробел (они будут доступны по https://$DOMAIN/static/<имя>): " -a STATIC_DIRS
 
-# 1) — Устанавливаем систему, Docker и необходимые утилиты
+### 2) — Устанавливаем систему и утилиты
 apt update && apt upgrade -y
 apt install -y \
   ca-certificates \
@@ -24,17 +29,17 @@ apt install -y \
   uuid-runtime \
   openssl
 
-# Устанавливаем Docker, если ещё не установлен
+# Docker
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
 
-# Устанавливаем плагин Docker Compose v2, если нужно
+# Docker Compose v2
 if ! docker compose version &>/dev/null; then
   apt install -y docker-compose-plugin
 fi
 
-# 2) — Генерируем ключ шифрования для n8n
+### 3) — Генерируем ключ шифрования для n8n
 if command -v uuidgen &>/dev/null; then
   N8N_ENCRYPTION_KEY=$(uuidgen)
 else
@@ -42,25 +47,27 @@ else
 fi
 echo "Сгенерирован N8N_ENCRYPTION_KEY: $N8N_ENCRYPTION_KEY"
 
-# 3) — Настраиваем UFW
+### 4) — Настройка UFW
 ufw allow OpenSSH
 ufw allow http
 ufw allow https
 ufw --force enable
 
-# 4) — Создаём структуру каталогов
+### 5) — Создаём структуру каталогов
 BASE="/opt/n8n"
 mkdir -p "$BASE"/{data,traefik,static,bot}
 cd "$BASE"
+
+# Статические папки
 for d in "${STATIC_DIRS[@]}"; do
   mkdir -p "$BASE/static/$d"
 done
 
-# Создаём acme.json для Traefik
+# ACME-файл
 touch "$BASE/traefik/acme.json"
 chmod 600 "$BASE/traefik/acme.json"
 
-# 5) — Генерируем .env
+### 6) — Генерируем .env
 cat > "$BASE/.env" <<EOF
 DOMAIN=$DOMAIN
 EMAIL=$EMAIL
@@ -72,7 +79,7 @@ TG_USER_ID=$TG_USER_ID
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 EOF
 
-# 6) — Генерируем docker-compose.yml
+### 7) — Генерируем docker-compose.yml
 cat > "$BASE/docker-compose.yml" <<EOF
 version: "3.8"
 
@@ -100,7 +107,7 @@ services:
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
       - POSTGRES_DB=n8n
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -121,18 +128,18 @@ services:
       - redis
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${BASIC_AUTH_USER}
-      - N8N_BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASS}
+      - N8N_BASIC_AUTH_USER=\${BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=\${BASIC_AUTH_PASS}
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_DATABASE=n8n
       - DB_POSTGRESDB_USER=user
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      - N8N_HOST=${DOMAIN}
-      - WEBHOOK_URL=https://${DOMAIN}/
+      - DB_POSTGRESDB_PASSWORD=\${POSTGRES_PASSWORD}
+      - N8N_HOST=\${DOMAIN}
+      - WEBHOOK_URL=https://\${DOMAIN}/
       - N8N_PROTOCOL=https
       - NODE_ENV=production
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_ENCRYPTION_KEY=\${N8N_ENCRYPTION_KEY}
       - GENERIC_TIMEZONE=Europe/Amsterdam
       - QUEUE_BULL_REDIS_HOST=redis
       - EXECUTIONS_DATA_PRUNE=true
@@ -140,7 +147,7 @@ services:
       - N8N_DEFAULT_BINARY_DATA_MODE=filesystem
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(\\"${DOMAIN}\\")"
+      - "traefik.http.routers.n8n.rule=Host(\\"\${DOMAIN}\\")"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls.certresolver=le"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
@@ -155,7 +162,7 @@ services:
       - ./static:/usr/share/nginx/html:ro
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.static.rule=Host(\\"${DOMAIN}\\") && PathPrefix(\\"/static\\")"
+      - "traefik.http.routers.static.rule=Host(\\"\${DOMAIN}\\") && PathPrefix(\\"/static\\")"
       - "traefik.http.routers.static.entrypoints=websecure"
       - "traefik.http.routers.static.tls.certresolver=le"
       - "traefik.http.services.static.loadbalancer.server.port=80"
@@ -172,13 +179,13 @@ services:
 
 networks:
   n8n_net:
-
 volumes:
   pgdata:
   redisdata:
 EOF
 
-# 7) — Генерируем файлы Telegram-бота
+### 8) — Генерируем файлы для Telegram-бота
+# Dockerfile
 cat > "$BASE/bot/Dockerfile" <<EOF
 FROM node:18-alpine
 WORKDIR /app
@@ -188,6 +195,7 @@ RUN npm install
 CMD ["npm","start"]
 EOF
 
+# package.json
 cat > "$BASE/bot/package.json" <<EOF
 {
   "name": "n8n-admin-tg-bot",
@@ -200,6 +208,7 @@ cat > "$BASE/bot/package.json" <<EOF
 }
 EOF
 
+# bot.js
 cat > "$BASE/bot/bot.js" <<EOF
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
@@ -209,13 +218,13 @@ const send = (msg,opt={}) => bot.sendMessage(process.env.TG_USER_ID, msg, opt);
 
 bot.onText(/\\/status/, () => {
   exec('uptime && docker ps --format "{{.Names}}\\t{{.Status}}"', (e,o,er) =>
-    send(er ? \`❌ \${er}\` : \`📊 *Статус:*\n\`\`\`\n\${o}\n\`\`\`\`, { parse_mode:'Markdown' })
+    send(er ? \`❌ \${er}\` : \`📊 *Статус:*\n\`\`\`\n\${o}\n\`\`\``, { parse_mode:'Markdown' })
   );
 });
 
 bot.onText(/\\/logs/, () => {
   exec('docker logs --tail 100 n8n', (e,o,er) =>
-    send(er ? \`❌ \${er}\` : \`📝 *Логи n8n:*\n\`\`\`\n\${o}\n\`\`\`\`, { parse_mode:'Markdown' })
+    send(er ? \`❌ \${er}\` : \`📝 *Логи n8n:*\n\`\`\`\n\${o}\n\`\`\``, { parse_mode:'Markdown' })
   );
 });
 
@@ -234,10 +243,10 @@ bot.onText(/\\/update/, () => {
 });
 EOF
 
-# 8) — Запускаем стэк
+### 9) — Запускаем весь стек
 cd "$BASE"
 docker compose pull
 docker compose up -d
 
 echo
-echo "✅ Установка завершена! Перейдите в браузере по адресу: https://$DOMAIN"
+echo "✅ Установка завершена! Откройте в браузере: https://$DOMAIN"
