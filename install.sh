@@ -139,5 +139,21 @@ docker run -d --name n8n-admin-tg-bot --restart always --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   n8n-admin-tg-bot
 
+# 9) Установка автоматического бэкапа
+echo "→ Настраиваем авто-бэкап в Telegram..."
+
+# Копируем скрипт в папку /opt/n8n/cron/
+mkdir -p "$BASE/cron"
+cp "$(dirname "$0")/backup_n8n.sh" "$BASE/cron/backup_n8n.sh"
+chmod +x "$BASE/cron/backup_n8n.sh"
+
+# Сохраняем переменные окружения для бэкапа
+echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
+echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
+echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
+
+# Добавляем cron-задачу: каждый день в 03:00
+(crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
+
 echo
 echo "✅ Установка завершена! Перейдите на https://$DOMAIN"
