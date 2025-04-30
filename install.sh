@@ -42,6 +42,12 @@ for d in "${STATIC_DIRS[@]}"; do mkdir -p "$BASE/static/$d"; done
 touch "$BASE/traefik_data/acme.json"
 chmod 600 "$BASE/traefik_data/acme.json"
 
+# 🛠 Сборка собственного Docker-образа n8n с yt-dlp и ffmpeg
+echo "→ Собираем кастомный образ n8n с yt-dlp и ffmpeg..."
+cp "$(dirname "$0")/Dockerfile.n8n" "$BASE/Dockerfile.n8n"
+cd "$BASE"
+docker build -f Dockerfile.n8n -t kalininlive/n8n:yt-dlp .
+
 # 6) Создание Docker-сети и томов
 docker network create n8n || true
 docker volume create n8n_db_storage || true
@@ -87,7 +93,7 @@ docker run -d --name n8n-static --restart always --network n8n \
   -l "traefik.http.services.static.loadbalancer.server.port=80" \
   nginx:alpine
 
-## n8n
+## n8n — кастомный образ с yt-dlp
 docker run -d --name n8n-app --restart always --network n8n \
   -l "traefik.enable=true" \
   -l "traefik.http.routers.n8n.rule=Host(\"$DOMAIN\")" \
@@ -114,7 +120,7 @@ docker run -d --name n8n-app --restart always --network n8n \
   -v "$BASE/n8n_data/files":/files \
   -v "$BASE/n8n_data/tmp":/tmp \
   -v "$BASE/n8n_data/backups":/backups \
-  docker.n8n.io/n8nio/n8n:1.90.2
+  kalininlive/n8n:yt-dlp
 
 # 8) Telegram-бот (папка bot с GitHub)
 cd "$BASE"
