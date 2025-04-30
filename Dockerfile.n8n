@@ -1,10 +1,6 @@
-# Dockerfile.n8n — расширенный n8n с yt-dlp и ffmpeg
-
 FROM docker.n8n.io/n8nio/n8n:latest
 
 USER root
-
-# Устанавливаем необходимые утилиты
 RUN apk add --no-cache \
     python3 \
     py3-pip \
