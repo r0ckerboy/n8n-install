@@ -144,7 +144,7 @@ echo "→ Настраиваем авто-бэкап в Telegram..."
 
 # Копируем скрипт в папку /opt/n8n/cron/
 mkdir -p "$BASE/cron"
-cp "$(dirname "$0")/backup_n8n.sh" "$BASE/cron/backup_n8n.sh"
+cp ./backup_n8n.sh "$BASE/cron/backup_n8n.sh"
 chmod +x "$BASE/cron/backup_n8n.sh"
 
 # Сохраняем переменные окружения для бэкапа
