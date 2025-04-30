@@ -156,4 +156,13 @@ echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
 echo
+echo "📦 Получаем список установленных библиотек внутри n8n..."
+
+docker exec -u 0 n8n-app sh -c 'apk info' | sort | tee "$BASE/n8n_data/backups/n8n_installed_packages.txt"
+
+echo
+echo "📄 Список сохранён в: $BASE/n8n_data/backups/n8n_installed_packages.txt"
+echo
+
+echo
 echo "✅ Установка завершена! Перейдите на https://$DOMAIN"
