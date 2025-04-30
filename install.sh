@@ -143,27 +143,36 @@ docker run -d --name n8n-admin-tg-bot --restart always --network host \
 # 9) Установка автоматического бэкапа
 echo "→ Настраиваем авто-бэкап в Telegram..."
 
-# Копируем скрипт в папку /opt/n8n/cron/
 mkdir -p "$BASE/cron"
 cp "$BASE/../n8n-install/backup_n8n.sh" "$BASE/cron/backup_n8n.sh"
 chmod +x "$BASE/cron/backup_n8n.sh"
 
-# Сохраняем переменные окружения для бэкапа
 echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 
-# Добавляем cron-задачу: каждый день в 03:00
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
+# 10) Сохранение установленных библиотек и версий
 echo
-echo "📦 Получаем список установленных библиотек внутри n8n..."
+echo "📦 Сохраняем список установленных библиотек и версий..."
 
-docker exec -u 0 n8n-app sh -c 'apk info' | sort | tee "$BASE/n8n_data/backups/n8n_installed_packages.txt"
+docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
+docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt"
+{
+  echo -n "yt-dlp: "
+  docker exec -u 0 n8n-app yt-dlp --version
+  echo -n "ffmpeg: "
+  docker exec -u 0 n8n-app ffmpeg -version | head -n 1
+  echo -n "python3: "
+  docker exec -u 0 n8n-app python3 --version
+} > "$BASE/n8n_data/backups/n8n_versions.txt"
 
 echo
-echo "📄 Список сохранён в: $BASE/n8n_data/backups/n8n_installed_packages.txt"
-echo
+echo "📄 Списки сохранены:"
+echo "→ $BASE/n8n_data/backups/n8n_installed_apk.txt"
+echo "→ $BASE/n8n_data/backups/n8n_installed_pip.txt"
+echo "→ $BASE/n8n_data/backups/n8n_versions.txt"
 
 echo
 echo "✅ Установка завершена! Перейдите на https://$DOMAIN"
