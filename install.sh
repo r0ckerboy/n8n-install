@@ -41,6 +41,7 @@ mkdir -p "$BASE"/{n8n_data,traefik_data,static,bot}
 for d in "${STATIC_DIRS[@]}"; do mkdir -p "$BASE/static/$d"; done
 touch "$BASE/traefik_data/acme.json"
 chmod 600 "$BASE/traefik_data/acme.json"
+chown -R 1000:1000 "$BASE/n8n_data/tmp"
 
 # 🛠 Сборка собственного Docker-образа n8n с yt-dlp и ffmpeg
 echo "→ Собираем кастомный образ n8n с yt-dlp и ffmpeg..."
