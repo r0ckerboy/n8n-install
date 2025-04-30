@@ -1,10 +1,16 @@
 FROM docker.n8n.io/n8nio/n8n:latest
 
 USER root
+
+# Установка Python, pip, ffmpeg
 RUN apk add --no-cache \
     python3 \
     py3-pip \
-    py3-yt-dlp \
     ffmpeg
+
+# Создание виртуального окружения и установка yt-dlp в него
+RUN python3 -m venv /venv && \
+    /venv/bin/pip install --no-cache-dir yt-dlp && \
+    ln -s /venv/bin/yt-dlp /usr/local/bin/yt-dlp
 
 USER node
