@@ -19,7 +19,10 @@
 3. Выполните:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/kalininlive/n8n-beget-install/main/install.sh)
+git clone https://github.com/kalininlive/n8n-beget-install.git /opt/n8n-install
+cd /opt/n8n-install
+chmod +x install.sh
+./install.sh
 ```
 
 Скрипт спросит:
