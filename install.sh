@@ -96,6 +96,10 @@ docker run -d --name n8n-static --restart always --network n8n \
 
 ## n8n — кастомный образ с yt-dlp
 docker run -d --name n8n-app --restart always --network n8n \
+  -v "$BASE/static":/static \
+  -v "$BASE/n8n_data/files":/files \
+  -v "$BASE/n8n_data/tmp":/tmp \
+  -v "$BASE/n8n_data/backups":/backups \
   -l "traefik.enable=true" \
   -l "traefik.http.routers.n8n.rule=Host(\"$DOMAIN\")" \
   -l "traefik.http.routers.n8n.entrypoints=websecure" \
@@ -118,9 +122,6 @@ docker run -d --name n8n-app --restart always --network n8n \
   -e EXECUTIONS_DATA_PRUNE=true \
   -e EXECUTIONS_DATA_MAX_AGE=168 \
   -e N8N_DEFAULT_BINARY_DATA_MODE=filesystem \
-  -v "$BASE/n8n_data/files":/files \
-  -v "$BASE/n8n_data/tmp":/tmp \
-  -v "$BASE/n8n_data/backups":/backups \
   kalininlive/n8n:yt-dlp
 
 # 8) Telegram-бот (папка bot с GitHub)
