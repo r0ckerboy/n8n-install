@@ -34,23 +34,19 @@ bot.onText(/\/logs/, () => {
 
 bot.onText(/\/backup/, () => {
   const exportCmd = 'docker exec n8n-app n8n export:workflow --all --separate --output=/tmp/workflows';
-  const tmpBackupDir = '/tmp/n8n_backup';
-  const archivePath = '/tmp/n8n_backup.zip';
-  const { mkdirSync, readdirSync, copyFileSync, existsSync, rmSync, createWriteStream } = require('fs');
-  const archiver = require('archiver');
-
-  // 1. Экспортируем воркфлоу из контейнера
   exec(exportCmd, (e, o, er) => {
-    if (er) return send(`❌ Ошибка при экспорте воркфлоу: ${er}`);
+    if (er) return send(`❌ Ошибка при экспорте: ${er}`);
 
-    // 2. Копируем файлы из контейнера на хост
-    exec(`docker cp n8n-app:/tmp/workflows/. ${tmpBackupDir}`, (e2) => {
-      if (e2) return send(`❌ Не удалось скопировать воркфлоу: ${e2}`);
+    const tmpBackupDir = '/tmp/n8n_backup';
+    const archivePath = '/tmp/n8n_backup.zip';
 
-      // 3. Создаём директорию, если не существует
-      mkdirSync(tmpBackupDir, { recursive: true });
+    fs.rmSync(tmpBackupDir, { recursive: true, force: true });
+    fs.rmSync(archivePath, { force: true });
+    fs.mkdirSync(tmpBackupDir, { recursive: true });
 
-      // 4. Добавляем важные файлы
+    exec('docker cp n8n-app:/tmp/workflows/. ' + tmpBackupDir, (e2) => {
+      if (e2) return send(`❌ Не удалось скопировать файлы: ${e2}`);
+
       const extraFiles = [
         '/opt/n8n/n8n_data/database.sqlite',
         '/opt/n8n/n8n_data/config',
@@ -59,33 +55,29 @@ bot.onText(/\/backup/, () => {
       ];
 
       for (const file of extraFiles) {
-        if (existsSync(file)) {
+        if (fs.existsSync(file)) {
           const fileName = file.split('/').pop();
-          copyFileSync(file, `${tmpBackupDir}/${fileName}`);
+          fs.copyFileSync(file, `${tmpBackupDir}/${fileName}`);
         }
       }
 
-      // 5. Создаём архив
-      const output = createWriteStream(archivePath);
+      const output = fs.createWriteStream(archivePath);
       const archive = archiver('zip', { zlib: { level: 9 } });
-
       archive.pipe(output);
       archive.directory(tmpBackupDir, false);
+      archive.finalize();
 
       output.on('close', () => {
-        // 6. Отправляем архив
         bot.sendDocument(TG_USER_ID, archivePath, {}, {
           filename: 'n8n_backup.zip',
           contentType: 'application/zip'
         }).then(() => {
-          rmSync(tmpBackupDir, { recursive: true, force: true });
-          rmSync(archivePath, { force: true });
+          fs.rmSync(tmpBackupDir, { recursive: true, force: true });
+          fs.rmSync(archivePath);
         }).catch(err => {
           send(`❌ Ошибка при отправке архива: ${err.message}`);
         });
       });
-
-      archive.finalize();
     });
   });
 });
