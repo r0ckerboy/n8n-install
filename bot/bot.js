@@ -39,17 +39,18 @@ bot.onText(/\/backup/, () => {
   const { mkdirSync, readdirSync, copyFileSync, existsSync, rmSync, createWriteStream } = require('fs');
   const archiver = require('archiver');
 
-  // 1. Экспортируем воркфлоу
+  // 1. Экспортируем воркфлоу из контейнера
   exec(exportCmd, (e, o, er) => {
     if (er) return send(`❌ Ошибка при экспорте воркфлоу: ${er}`);
 
-    mkdirSync(tmpBackupDir, { recursive: true });
+    // 2. Копируем файлы из контейнера на хост
+    exec(`docker cp n8n-app:/tmp/workflows/. ${tmpBackupDir}`, (e2) => {
+      if (e2) return send(`❌ Не удалось скопировать воркфлоу: ${e2}`);
 
-    // 2. Копируем файлы воркфлоу
-    exec('docker cp n8n-app:/tmp/workflows/. ' + tmpBackupDir, (e2) => {
-      if (e2) return send(`❌ Не удалось скопировать файлы воркфлоу: ${e2}`);
+      // 3. Создаём директорию, если не существует
+      mkdirSync(tmpBackupDir, { recursive: true });
 
-      // 3. Копируем важные файлы
+      // 4. Добавляем важные файлы
       const extraFiles = [
         '/opt/n8n/n8n_data/database.sqlite',
         '/opt/n8n/n8n_data/config',
@@ -64,14 +65,15 @@ bot.onText(/\/backup/, () => {
         }
       }
 
-      // 4. Архивируем
+      // 5. Создаём архив
       const output = createWriteStream(archivePath);
       const archive = archiver('zip', { zlib: { level: 9 } });
+
       archive.pipe(output);
       archive.directory(tmpBackupDir, false);
-      archive.finalize();
 
       output.on('close', () => {
+        // 6. Отправляем архив
         bot.sendDocument(TG_USER_ID, archivePath, {}, {
           filename: 'n8n_backup.zip',
           contentType: 'application/zip'
@@ -82,6 +84,8 @@ bot.onText(/\/backup/, () => {
           send(`❌ Ошибка при отправке архива: ${err.message}`);
         });
       });
+
+      archive.finalize();
     });
   });
 });
