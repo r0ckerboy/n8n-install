@@ -10,14 +10,11 @@ read -p "Введите токен вашего Telegram-бота: " TG_BOT_TOKE
 read -p "Введите ваш Telegram User ID: " TG_USER_ID
 read -p "Введите пароль для базы данных Postgres: " POSTGRES_PASSWORD
 
-# Статические папки
-STATIC_DIRS=("files" "backups" "public")
-
 # 1) Установка системных утилит + мультимедиа пакетов
 apt update && apt upgrade -y
 apt install -y ca-certificates curl gnupg lsb-release ufw uuid-runtime openssl git ffmpeg imagemagick python3 python3-pip libavcodec-extra
 
-# 2) Установка Docker и Compose
+# 2) Docker + Compose
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
@@ -25,38 +22,38 @@ if ! docker compose version &>/dev/null; then
   apt install -y docker-compose-plugin
 fi
 
-# 3) Генерация ключа для шифрования
+# 3) Генерация ключа
 N8N_ENCRYPTION_KEY=$(uuidgen || openssl rand -hex 32)
 echo "→ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
 
-# 4) Настройка Firewall
-ufw allow OpenSSH
-ufw allow http
-ufw allow https
-ufw --force enable
-
-# 5) Создание директорий
+# 4) Создаем директории заранее
 BASE="/opt/n8n"
+STATIC_DIRS=("files" "backups" "public")
 mkdir -p "$BASE"/{n8n_data/tmp,n8n_data/files,n8n_data/backups,traefik_data,static,bot}
 for d in "${STATIC_DIRS[@]}"; do mkdir -p "$BASE/static/$d"; done
 touch "$BASE/traefik_data/acme.json"
 chmod 600 "$BASE/traefik_data/acme.json"
 chown -R 1000:1000 "$BASE/n8n_data/tmp"
 
-# 🛠 Сборка собственного Docker-образа n8n с yt-dlp и ffmpeg
-echo "→ Собираем кастомный образ n8n с yt-dlp и ffmpeg..."
+# 5) Firewall
+ufw allow OpenSSH
+ufw allow http
+ufw allow https
+ufw --force enable
+
+# 6) Dockerfile.n8n
 cp "$(dirname "$0")/Dockerfile.n8n" "$BASE/Dockerfile.n8n"
 cd "$BASE"
+echo "→ Собираем образ n8n..."
 docker build -f Dockerfile.n8n -t kalininlive/n8n:yt-dlp .
 
-# 6) Создание Docker-сети и томов
+# 7) Docker network + volumes
 docker network create n8n || true
 docker volume create n8n_db_storage || true
 docker volume create n8n_n8n_storage || true
 docker volume create n8n_redis_storage || true
 
-# 7) Запуск контейнеров
-
+# 8) Containers
 ## Postgres
 docker run -d --name n8n-postgres --restart always --network n8n \
   -e POSTGRES_USER=user \
@@ -84,7 +81,7 @@ docker run -d --name n8n-traefik --restart always --network n8n \
     --certificatesresolvers.le.acme.email="$EMAIL" \
     --certificatesresolvers.le.acme.storage=/acme.json
 
-## nginx статика
+## nginx static
 docker run -d --name n8n-static --restart always --network n8n \
   -v "$BASE/static":/usr/share/nginx/html:ro \
   -l "traefik.enable=true" \
@@ -94,7 +91,7 @@ docker run -d --name n8n-static --restart always --network n8n \
   -l "traefik.http.services.static.loadbalancer.server.port=80" \
   nginx:alpine
 
-## n8n — кастомный образ с yt-dlp
+## n8n
 docker run -d --name n8n-app --restart always --network n8n \
   -v "$BASE/static":/static \
   -v "$BASE/n8n_data/files":/files \
@@ -124,12 +121,10 @@ docker run -d --name n8n-app --restart always --network n8n \
   -e N8N_DEFAULT_BINARY_DATA_MODE=filesystem \
   kalininlive/n8n:yt-dlp
 
-# 8) Telegram-бот (папка bot с GitHub)
-cd "$BASE"
-git clone https://github.com/kalininlive/n8n-beget-install.git tmp-bot
-cp -r tmp-bot/bot/* bot/
-rm -rf tmp-bot
-
+# 9) Bot
+git clone https://github.com/kalininlive/n8n-beget-install.git "$BASE/tmp-bot"
+cp -r "$BASE/tmp-bot/bot"/* "$BASE/bot/"
+rm -rf "$BASE/tmp-bot"
 cd "$BASE/bot"
 docker build -t n8n-admin-tg-bot .
 docker run -d --name n8n-admin-tg-bot --restart always --network host \
@@ -141,39 +136,32 @@ docker run -d --name n8n-admin-tg-bot --restart always --network host \
   -v /var/run/docker.sock:/var/run/docker.sock \
   n8n-admin-tg-bot
 
-# 9) Установка автоматического бэкапа
-echo "→ Настраиваем авто-бэкап в Telegram..."
-
+# 10) Backup cron
+echo "→ Настраиваем авто-бэкап..."
 mkdir -p "$BASE/cron"
 cp "$BASE/../n8n-install/backup_n8n.sh" "$BASE/cron/backup_n8n.sh"
 chmod +x "$BASE/cron/backup_n8n.sh"
-
 echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
-
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
-# 10) Сохранение установленных библиотек и версий
-echo
-echo "📦 Сохраняем список установленных библиотек и версий..."
-
+# 11) Save installed packages echo
+echo "
+📆 Сохраняем списки пакетов..."
 docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
 docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt"
 {
-  echo -n "yt-dlp: "
-  docker exec -u 0 n8n-app yt-dlp --version
-  echo -n "ffmpeg: "
-  docker exec -u 0 n8n-app ffmpeg -version | head -n 1
-  echo -n "python3: "
-  docker exec -u 0 n8n-app python3 --version
+  echo -n "yt-dlp: "; docker exec -u 0 n8n-app yt-dlp --version
+  echo -n "ffmpeg: "; docker exec -u 0 n8n-app ffmpeg -version | head -n 1
+  echo -n "python3: "; docker exec -u 0 n8n-app python3 --version
 } > "$BASE/n8n_data/backups/n8n_versions.txt"
 
-echo
-echo "📄 Списки сохранены:"
+echo "
+📄 Списки сохранены в:"
 echo "→ $BASE/n8n_data/backups/n8n_installed_apk.txt"
 echo "→ $BASE/n8n_data/backups/n8n_installed_pip.txt"
 echo "→ $BASE/n8n_data/backups/n8n_versions.txt"
 
-echo
-echo "✅ Установка завершена! Перейдите на https://$DOMAIN"
+echo "
+📅 Установка завершена! Откройте https://$DOMAIN"
