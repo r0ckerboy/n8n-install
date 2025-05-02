@@ -33,67 +33,55 @@ bot.onText(/\/logs/, () => {
 });
 
 bot.onText(/\/backup/, () => {
-  const fs = require('fs');
-  const path = require('path');
-  const archiver = require('archiver');
+  const cmd = 'docker exec n8n-app n8n export:workflow --all --separate --output=/tmp/workflows';
+  
+  exec(cmd, (e, o, er) => {
+    if (er) return send(`❌ Ошибка при экспорте воркфлоу: ${er}`);
+    
+    const backupDir = '/tmp/workflows';
+    const tmpBackupDir = '/tmp/n8n_backup';
 
-  const containerPath = '/tmp/workflows';
-  const hostCopyPath = '/tmp/workflows_copy';
-  const tmpBackupDir = '/tmp/n8n_backup';
-  const zipPath = '/tmp/n8n_backup.zip';
-
-  const exportCmd = `docker exec n8n-app n8n export:workflow --all --separate --output=${containerPath}`;
-  const copyCmd = `docker cp n8n-app:${containerPath} ${hostCopyPath}`;
-
-  exec(exportCmd, (err1) => {
-    if (err1) return send(`❌ Ошибка при экспорте воркфлоу: ${err1}`);
-
-    exec(copyCmd, (err2) => {
-      if (err2) return send(`❌ Ошибка при копировании из контейнера: ${err2}`);
-
-      // Логируем, что нашли в папке
-      const files = fs.readdirSync(hostCopyPath);
-      if (files.length === 0) {
-        return send(`ℹ️ Нет воркфлоу для бэкапа.`);
-      }
-
-      send(`Найдено воркфлоу: ${files.length}`);
-
+    if (fs.existsSync(backupDir) && fs.readdirSync(backupDir).length > 0) {
+      // Создаём временную папку для бэкапа
       fs.mkdirSync(tmpBackupDir, { recursive: true });
-
-      // Копируем воркфлоу
-      files.forEach(file => {
-        fs.copyFileSync(path.join(hostCopyPath, file), path.join(tmpBackupDir, file));
+      
+      // Копируем воркфлоу в временную папку
+      fs.readdirSync(backupDir).forEach(file => {
+        fs.copyFileSync(`${backupDir}/${file}`, `${tmpBackupDir}/${file}`);
       });
 
       // Копируем важные файлы конфигурации
-      const extraFiles = [
-        '/opt/n8n/n8n_data/config',
-        '/opt/n8n/n8n_data/n8n_encryption_key.txt',
-        '/opt/n8n/n8n_data/postgres_password.txt'
+      const importantFiles = [
+        '/opt/n8n/n8n_data/database.sqlite', // Если используется SQLite
+        '/opt/n8n/n8n_data/config', // Конфигурации
+        '/opt/n8n/n8n_data/postgres_password.txt', // Пароль для PostgreSQL
+        '/opt/n8n/n8n_data/n8n_encryption_key.txt' // Ключ шифрования N8N
       ];
-      extraFiles.forEach(file => {
+
+      importantFiles.forEach(file => {
         if (fs.existsSync(file)) {
-          fs.copyFileSync(file, path.join(tmpBackupDir, path.basename(file)));
+          fs.copyFileSync(file, `${tmpBackupDir}/${file.split('/').pop()}`);
         }
       });
 
-      // Архивируем
-      const output = fs.createWriteStream(zipPath);
+      // Архивируем все файлы
+      const output = fs.createWriteStream('/tmp/n8n_backup.zip');
       const archive = archiver('zip', { zlib: { level: 9 } });
       archive.pipe(output);
       archive.directory(tmpBackupDir, false); // Добавляем все файлы из временной папки
       archive.finalize();
 
       output.on('close', () => {
-        bot.sendDocument(TG_USER_ID, zipPath)
-          .then(() => {
-            fs.rmSync(zipPath);
-            fs.rmSync(tmpBackupDir, { recursive: true, force: true });
-            fs.rmSync(hostCopyPath, { recursive: true, force: true });
-          });
+        // Отправляем архив с воркфлоу и данными
+        bot.sendDocument(TG_USER_ID, '/tmp/n8n_backup.zip');
+        
+        // Чистим временные файлы
+        fs.rmSync(tmpBackupDir, { recursive: true, force: true });
+        fs.rmSync('/tmp/n8n_backup.zip');
       });
-    });
+    } else {
+      send(`ℹ️ Бэкап за ${new Date().toISOString().split('T')[0]}: не найдено данных для сохранения.`);
+    }
   });
 });
 
