@@ -1,6 +1,8 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const { exec } = require('child_process');
+const fs = require('fs');
+const archiver = require('archiver');
 
 const {
   TG_BOT_TOKEN,
@@ -31,10 +33,55 @@ bot.onText(/\/logs/, () => {
 });
 
 bot.onText(/\/backup/, () => {
-  const cmd = 'docker exec n8n-app n8n export:workflow --all --output=/tmp/workflows.json && docker cp n8n-app:/tmp/workflows.json /tmp/workflows.json';
+  const cmd = 'docker exec n8n-app n8n export:workflow --all --separate --output=/tmp/workflows';
+  
   exec(cmd, (e, o, er) => {
-    if (er) return send(`❌ ${er}`);
-    bot.sendDocument(TG_USER_ID, '/tmp/workflows.json');
+    if (er) return send(`❌ Ошибка при экспорте воркфлоу: ${er}`);
+    
+    const backupDir = '/tmp/workflows';
+    const tmpBackupDir = '/tmp/n8n_backup';
+
+    if (fs.existsSync(backupDir) && fs.readdirSync(backupDir).length > 0) {
+      // Создаём временную папку для бэкапа
+      fs.mkdirSync(tmpBackupDir, { recursive: true });
+      
+      // Копируем воркфлоу в временную папку
+      fs.readdirSync(backupDir).forEach(file => {
+        fs.copyFileSync(`${backupDir}/${file}`, `${tmpBackupDir}/${file}`);
+      });
+
+      // Копируем важные файлы конфигурации
+      const importantFiles = [
+        '/opt/n8n/n8n_data/database.sqlite', // Если используется SQLite
+        '/opt/n8n/n8n_data/config', // Конфигурации
+        '/opt/n8n/n8n_data/postgres_password.txt', // Пароль для PostgreSQL
+        '/opt/n8n/n8n_data/n8n_encryption_key.txt' // Ключ шифрования N8N
+      ];
+
+      importantFiles.forEach(file => {
+        if (fs.existsSync(file)) {
+          fs.copyFileSync(file, `${tmpBackupDir}/${file.split('/').pop()}`);
+        }
+      });
+
+      // Архивируем все файлы
+      const output = fs.createWriteStream('/tmp/n8n_backup.zip');
+      const archive = archiver('zip', { zlib: { level: 9 } });
+      archive.pipe(output);
+      archive.directory(tmpBackupDir, false); // Добавляем все файлы из временной папки
+      archive.finalize();
+
+      output.on('close', () => {
+        // Отправляем архив с воркфлоу и данными
+        bot.sendDocument(TG_USER_ID, '/tmp/n8n_backup.zip');
+        
+        // Чистим временные файлы
+        fs.rmSync(tmpBackupDir, { recursive: true, force: true });
+        fs.rmSync('/tmp/n8n_backup.zip');
+      });
+    } else {
+      send(`ℹ️ Бэкап за ${new Date().toISOString().split('T')[0]}: не найдено данных для сохранения.`);
+    }
   });
 });
 
