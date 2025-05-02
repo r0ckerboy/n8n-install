@@ -37,7 +37,7 @@ ufw --force enable
 
 # 5) Создание директорий
 BASE="/opt/n8n"
-mkdir -p "$BASE"/{n8n_data,traefik_data,static,bot}
+mkdir -p "$BASE"/{n8n_data/tmp,n8n_data/files,n8n_data/backups,traefik_data,static,bot}
 for d in "${STATIC_DIRS[@]}"; do mkdir -p "$BASE/static/$d"; done
 touch "$BASE/traefik_data/acme.json"
 chmod 600 "$BASE/traefik_data/acme.json"
