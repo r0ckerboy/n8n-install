@@ -146,9 +146,8 @@ echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
-# 11) Save installed packages echo
-echo "
-📆 Сохраняем списки пакетов..."
+# 11) Save installed packages and send to Telegram
+echo "\n📦 Сохраняем списки пакетов..."
 docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
 docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt"
 {
@@ -157,11 +156,14 @@ docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_instal
   echo -n "python3: "; docker exec -u 0 n8n-app python3 --version
 } > "$BASE/n8n_data/backups/n8n_versions.txt"
 
-echo "
-📄 Списки сохранены в:"
+VERSIONS=$(cat "$BASE/n8n_data/backups/n8n_versions.txt")
+curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
+     -d chat_id=$TG_USER_ID \
+     --data-urlencode "text=✅ Установка завершена\n\n📄 Библиотеки в контейнере:\n$VERSIONS"
+
+echo "\n📄 Списки сохранены в:"
 echo "→ $BASE/n8n_data/backups/n8n_installed_apk.txt"
 echo "→ $BASE/n8n_data/backups/n8n_installed_pip.txt"
 echo "→ $BASE/n8n_data/backups/n8n_versions.txt"
 
-echo "
-📅 Установка завершена! Откройте https://$DOMAIN"
+echo "\n📅 Установка завершена! Откройте https://$DOMAIN"
