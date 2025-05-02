@@ -118,3 +118,24 @@ bot.onText(/\/update/, () => {
     send(er ? `❌ ${er}` : '✅ *n8n успешно обновлён!*', { parse_mode: 'Markdown' });
   });
 });
+
+const { exec } = require('child_process');
+
+bot.onText(/\/backup/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, 'Запускаю бэкап…');
+
+  exec('/opt/n8n-install/backup_n8n.sh', (error, stdout, stderr) => {
+    if (error) {
+      bot.sendMessage(chatId, `Ошибка при бэкапе:\n${error.message}`);
+      console.error('Backup error:', error);
+      return;
+    }
+    if (stderr) {
+      bot.sendMessage(chatId, `Скрипт вернул stderr:\n${stderr}`);
+      console.warn('Backup stderr:', stderr);
+      return;
+    }
+    bot.sendMessage(chatId, `Бэкап успешно завершён:\n${stdout}`);
+  });
+});
