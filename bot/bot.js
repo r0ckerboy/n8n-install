@@ -51,18 +51,22 @@ bot.onText(/\/backup/, () => {
     exec(copyCmd, (err2) => {
       if (err2) return send(`❌ Ошибка при копировании из контейнера: ${err2}`);
 
-      if (!fs.existsSync(hostCopyPath) || fs.readdirSync(hostCopyPath).length === 0) {
+      // Логируем, что нашли в папке
+      const files = fs.readdirSync(hostCopyPath);
+      if (files.length === 0) {
         return send(`ℹ️ Нет воркфлоу для бэкапа.`);
       }
+
+      send(`Найдено воркфлоу: ${files.length}`);
 
       fs.mkdirSync(tmpBackupDir, { recursive: true });
 
       // Копируем воркфлоу
-      fs.readdirSync(hostCopyPath).forEach(file => {
+      files.forEach(file => {
         fs.copyFileSync(path.join(hostCopyPath, file), path.join(tmpBackupDir, file));
       });
 
-      // Копируем креды и ключи
+      // Копируем важные файлы конфигурации
       const extraFiles = [
         '/opt/n8n/n8n_data/config',
         '/opt/n8n/n8n_data/n8n_encryption_key.txt',
@@ -78,7 +82,7 @@ bot.onText(/\/backup/, () => {
       const output = fs.createWriteStream(zipPath);
       const archive = archiver('zip', { zlib: { level: 9 } });
       archive.pipe(output);
-      archive.directory(tmpBackupDir, false);
+      archive.directory(tmpBackupDir, false); // Добавляем все файлы из временной папки
       archive.finalize();
 
       output.on('close', () => {
