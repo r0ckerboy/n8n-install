@@ -137,6 +137,10 @@ echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 # Добавляем задание в cron
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
+# Проверка cron заданий
+echo "→ Проверка текущих cron заданий..."
+crontab -l
+
 # 11) Проверка установки и отправка уведомлений
 echo "→ Сохраняем списки установленных пакетов..."
 docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
