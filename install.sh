@@ -132,37 +132,30 @@ chmod +x "$BASE/cron/backup_n8n.sh"
 echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
+echo "→ Telegram-бот настроен."
 
 # 10) Добавление cron задачи для бэкапов с полным путем
 echo "→ Настроим cron для авто-бэкапов..."
 (crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/cron/backup_n8n.sh") | crontab -
 echo "→ Проверка текущих cron заданий..."
 crontab -l
+echo "→ Cron задача добавлена."
 
 # 11) Сохраняем установленные пакеты и отправляем в Telegram
 echo "\n📦 Сохраняем списки пакетов..."
-
-# Проверим, что контейнер n8n запущен
 if docker ps -q -f name=n8n-app; then
   echo "→ Контейнер n8n запущен. Сохраняем списки пакетов..."
-
-  # Сохранение списка установленных пакетов в контейнере
   docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
   docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt"
-
-  # Сохраняем информацию о версиях инструментов
   {
     echo -n "yt-dlp: "; docker exec -u 0 n8n-app yt-dlp --version
     echo -n "ffmpeg: "; docker exec -u 0 n8n-app ffmpeg -version | head -n 1
     echo -n "python3: "; docker exec -u 0 n8n-app python3 --version
   } > "$BASE/n8n_data/backups/n8n_versions.txt"
-
-  # Отправляем результат в Telegram
   VERSIONS=$(cat "$BASE/n8n_data/backups/n8n_versions.txt")
   curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
        -d chat_id=$TG_USER_ID \
        --data-urlencode "text=✅ Установка завершена\n\n📄 Библиотеки в контейнере:\n$VERSIONS"
-
   echo "\n📄 Списки сохранены в:"
   echo "→ $BASE/n8n_data/backups/n8n_installed_apk.txt"
   echo "→ $BASE/n8n_data/backups/n8n_installed_pip.txt"
