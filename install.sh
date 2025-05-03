@@ -30,6 +30,7 @@ echo "→ Сгенерирован ключ шифрования: $N8N_ENCRYPTIO
 
 # 4) Создаем директории для данных и бэкапов
 BASE="/opt/n8n"
+echo "→ Создание директорий для данных и бэкапов..."
 mkdir -p "$BASE"/n8n_data/{files,tmp,backups}
 mkdir -p "$BASE"/static
 mkdir -p "$BASE"/cron
@@ -38,7 +39,7 @@ touch "$BASE/traefik_data/acme.json"  # Создание файла acme.json
 chmod 600 "$BASE/traefik_data/acme.json"  # Устанавливаем права для файла
 
 # Настроим права на директории
-echo "→ Настроим права на директории..."
+echo "→ Настройка прав на директории..."
 chmod 777 "$BASE/n8n_data/tmp"  # Даем права на запись в /tmp
 chmod 777 "$BASE/n8n_data/backups"  # Права на бэкапы
 
