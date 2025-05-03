@@ -141,6 +141,36 @@ echo "→ Настроим cron для авто-бэкапов..."
 echo "→ Проверка текущих cron заданий..."
 crontab -l
 
-# 11) Финальные шаги
-echo "✅ Установка завершена!"
-echo "📅 Для управления используйте Telegram-бота с командой /status, /logs, /backup, /update."
+# 11) Сохраняем установленные пакеты и отправляем в Telegram
+echo "\n📦 Сохраняем списки пакетов..."
+
+# Проверим, что контейнер n8n запущен
+if docker ps -q -f name=n8n-app; then
+  echo "→ Контейнер n8n запущен. Сохраняем списки пакетов..."
+
+  # Сохранение списка установленных пакетов в контейнере
+  docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt"
+  docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt"
+
+  # Сохраняем информацию о версиях инструментов
+  {
+    echo -n "yt-dlp: "; docker exec -u 0 n8n-app yt-dlp --version
+    echo -n "ffmpeg: "; docker exec -u 0 n8n-app ffmpeg -version | head -n 1
+    echo -n "python3: "; docker exec -u 0 n8n-app python3 --version
+  } > "$BASE/n8n_data/backups/n8n_versions.txt"
+
+  # Отправляем результат в Telegram
+  VERSIONS=$(cat "$BASE/n8n_data/backups/n8n_versions.txt")
+  curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
+       -d chat_id=$TG_USER_ID \
+       --data-urlencode "text=✅ Установка завершена\n\n📄 Библиотеки в контейнере:\n$VERSIONS"
+
+  echo "\n📄 Списки сохранены в:"
+  echo "→ $BASE/n8n_data/backups/n8n_installed_apk.txt"
+  echo "→ $BASE/n8n_data/backups/n8n_installed_pip.txt"
+  echo "→ $BASE/n8n_data/backups/n8n_versions.txt"
+else
+  echo "❌ Контейнер n8n не запущен. Не удалось сохранить списки пакетов."
+fi
+
+echo "\n📅 Установка завершена! Откройте https://$DOMAIN"
