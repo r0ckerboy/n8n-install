@@ -3,11 +3,11 @@ set -euo pipefail
 
 # Запрашиваем данные у пользователя
 echo "=== 🚀 Установка n8n с ботом для администрирования ==="
-DOMAIN="n8n.kalininlive.ru"
-EMAIL="info@kalininlive.ru"
-TG_BOT_TOKEN="8013093851:AAFYwCrXkIicl6GMXV1cJnEhBOtYhbk5Z_I"
-TG_USER_ID="1694739756"
-POSTGRES_PASSWORD="Ct^%^6DR5eaftgty7uED"
+read -p "Введите домен для n8n (например n8n.example.com): " DOMAIN
+read -p "Введите email для получения SSL-сертификата: " EMAIL
+read -p "Введите токен вашего Telegram-бота: " TG_BOT_TOKEN
+read -p "Введите ваш Telegram User ID: " TG_USER_ID
+read -p "Введите пароль для базы данных Postgres: " POSTGRES_PASSWORD
 
 # 1) Установка зависимостей
 echo "→ Установка утилит и мультимедиа пакетов..."
