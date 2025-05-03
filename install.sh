@@ -33,8 +33,9 @@ BASE="/opt/n8n"
 mkdir -p "$BASE"/n8n_data/{files,tmp,backups}
 mkdir -p "$BASE"/static
 mkdir -p "$BASE"/cron
-touch "$BASE/traefik_data/acme.json"
-chmod 600 "$BASE/traefik_data/acme.json"
+mkdir -p "$BASE/traefik_data"  # Создание директории для Traefik
+touch "$BASE/traefik_data/acme.json"  # Создание файла acme.json
+chmod 600 "$BASE/traefik_data/acme.json"  # Устанавливаем права для файла
 
 # 5) Настройка firewall
 echo "→ Настройка firewall..."
@@ -127,13 +128,14 @@ echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 
-# 10) Добавление cron задачи для бэкапов
+# 10) Добавление cron задачи для бэкапов, если она еще не добавлена
+echo "→ Настроим cron для авто-бэкапов..."
 (crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
 
-# 11) Проверка cron заданий
+# Проверка cron задач
 echo "→ Проверка текущих cron заданий..."
 crontab -l
 
-# 12) Финальные шаги
+# 11) Финальные шаги
 echo "✅ Установка завершена!"
 echo "📅 Для управления используйте Telegram-бота с командой /status, /logs, /backup, /update."
