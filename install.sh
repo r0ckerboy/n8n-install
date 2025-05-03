@@ -37,6 +37,11 @@ mkdir -p "$BASE/traefik_data"  # Создание директории для Tr
 touch "$BASE/traefik_data/acme.json"  # Создание файла acme.json
 chmod 600 "$BASE/traefik_data/acme.json"  # Устанавливаем права для файла
 
+# Настроим права на директории
+echo "→ Настроим права на директории..."
+chmod 777 "$BASE/n8n_data/tmp"  # Даем права на запись в /tmp
+chmod 777 "$BASE/n8n_data/backups"  # Права на бэкапы
+
 # 5) Настройка firewall
 echo "→ Настройка firewall..."
 ufw allow OpenSSH
@@ -128,9 +133,9 @@ echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 
-# 10) Добавление cron задачи для бэкапов, если она еще не добавлена
+# 10) Добавление cron задачи для бэкапов с полным путем
 echo "→ Настроим cron для авто-бэкапов..."
-(crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/cron/backup_n8n.sh") | crontab -
 
 # Проверка cron задач
 echo "→ Проверка текущих cron заданий..."
