@@ -132,7 +132,6 @@ chmod +x "$BASE/cron/backup_n8n.sh"
 echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
 echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
 echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
-echo "→ Telegram-бот настроен."
 
 # 10) Добавление cron задачи для бэкапов с полным путем
 echo "→ Настроим cron для авто-бэкапов..."
@@ -163,5 +162,13 @@ if docker ps -q -f name=n8n-app; then
 else
   echo "❌ Контейнер n8n не запущен. Не удалось сохранить списки пакетов."
 fi
+
+# 12) Исправление прав на файл настроек n8n
+echo "→ Исправляем права на файл настроек n8n..."
+sudo chmod 600 /home/node/.n8n/config
+
+# 13) Включаем task runners для n8n
+echo "→ Включаем task runners для n8n..."
+export N8N_RUNNERS_ENABLED=true
 
 echo "\n📅 Установка завершена! Откройте https://$DOMAIN"
