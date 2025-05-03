@@ -136,8 +136,6 @@ echo "DOMAIN=\"$DOMAIN\"" >> "$BASE/cron/.env"
 # 10) Добавление cron задачи для бэкапов с полным путем
 echo "→ Настроим cron для авто-бэкапов..."
 (crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/cron/backup_n8n.sh") | crontab -
-
-# Проверка cron задач
 echo "→ Проверка текущих cron заданий..."
 crontab -l
 
