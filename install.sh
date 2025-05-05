@@ -1,19 +1,43 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "=== 🚀 Установка n8n с Telegram-ботом ==="
+echo -e "=== 🚀 Установка n8n с Telegram-ботом ===\n"
 
-read -p "Введите домен (например n8n.example.com): " DOMAIN
-read -p "Введите email (для SSL): " EMAIL
-read -p "Введите токен Telegram-бота: " TG_BOT_TOKEN
-read -p "Введите ваш Telegram ID: " TG_USER_ID
-read -p "Введите пароль от Postgres: " POSTGRES_PASSWORD
+# 1) Проверка docker и docker compose
+if ! command -v docker &> /dev/null; then
+  echo "❌ Docker не найден. Установите Docker вручную: https://docs.docker.com/engine/install/ubuntu/"
+  exit 1
+fi
 
-# Генерация ключа
-N8N_ENCRYPTION_KEY=$(uuidgen)
-echo "→ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
+if ! docker compose version &> /dev/null; then
+  echo "❌ Docker Compose (v2) не найден. Установите его вручную: https://docs.docker.com/compose/install/linux/"
+  exit 1
+fi
 
-# Создание директорий
+# 2) Загрузка переменных
+if [ -f .env ]; then
+  echo "→ Используем .env файл"
+  source .env
+else
+  read -p "Введите домен (например n8n.example.com): " DOMAIN
+  read -p "Введите email (для SSL): " EMAIL
+  read -p "Введите токен Telegram-бота: " TG_BOT_TOKEN
+  read -p "Введите ваш Telegram ID: " TG_USER_ID
+  read -p "Введите пароль от Postgres: " POSTGRES_PASSWORD
+  N8N_ENCRYPTION_KEY=$(uuidgen)
+  echo "→ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
+
+  cat <<EOF > .env
+DOMAIN=$DOMAIN
+EMAIL=$EMAIL
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+TG_USER_ID=$TG_USER_ID
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+EOF
+fi
+
+# 3) Создание директорий
 mkdir -p n8n_data/{files,tmp,backups}
 mkdir -p traefik_data
 mkdir -p static
@@ -22,56 +46,37 @@ mkdir -p cron
 touch traefik_data/acme.json
 chmod 600 traefik_data/acme.json
 
-# Сохраняем переменные в .env
-cat <<EOF > .env
-DOMAIN=$DOMAIN
-EMAIL=$EMAIL
-TG_BOT_TOKEN=$TG_BOT_TOKEN
-TG_USER_ID=$TG_USER_ID
-POSTGRES_PASSWORD=$POSTGRES_PASSWORD
-N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
-EOF
-
-# Установка зависимостей
-echo "→ Устанавливаем зависимости..."
-apt update && apt install -y docker.io docker-compose nodejs npm git curl ufw
-
-# Установка pm2
+# 4) Установка pm2 и зависимостей для бота
+echo "→ Устанавливаем pm2 и зависимости бота..."
 npm install -g pm2
+cd bot && npm install && cd ..
 
-# Установка зависимостей бота
-cd bot
-npm install
-cd ..
-
-# Запуск контейнеров
-echo "→ Запускаем контейнеры n8n через docker-compose..."
+# 5) Запуск docker-compose
+echo "→ Запускаем n8n контейнеры..."
 docker compose up -d --build
 
-# Запуск бота через pm2
+# 6) Запуск бота через pm2
 echo "→ Запускаем Telegram-бота через pm2..."
 pm2 start bot/bot.js --name n8n-bot
-pm2 startup
 pm2 save
+pm2 startup | bash
 
-# Копируем скрипт бэкапа
+# 7) Копия скрипта бэкапа
 cp backup_n8n.sh cron/backup_n8n.sh
 chmod +x cron/backup_n8n.sh
-
-# Создаем .env для cron-скрипта
 cat <<EOF > cron/.env
 TG_BOT_TOKEN=$TG_BOT_TOKEN
 TG_USER_ID=$TG_USER_ID
 DOMAIN=$DOMAIN
 EOF
 
-# Установка cron задачи
-echo "→ Добавляем cron-задачу для бэкапов..."
+# 8) Добавление cron
+echo "→ Устанавливаем cron-задачу для бэкапов..."
 (crontab -l 2>/dev/null; echo "0 3 * * * $(pwd)/cron/backup_n8n.sh") | crontab -
 
-# Финальное сообщение в Telegram
+# 9) Отправка уведомления
 curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
   -d chat_id=$TG_USER_ID \
-  --data-urlencode "text=✅ Установка n8n завершена!\n\nДомен: https://$DOMAIN\nКонтейнеры и бот запущены."
+  --data-urlencode "text=✅ Установка завершена!\n\n🌐 https://$DOMAIN\nБот и сервисы запущены."
 
-echo -e "\n✅ Установка завершена. Открой https://$DOMAIN"
+echo -e "\n🎉 Готово! Открой: https://$DOMAIN"
