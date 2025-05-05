@@ -1,86 +1,74 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process');
 const fs = require('fs');
 require('dotenv').config();
 
 const token = process.env.TG_BOT_TOKEN;
 const userId = process.env.TG_USER_ID;
-
 const bot = new TelegramBot(token, { polling: true });
 
 function isAuthorized(msg) {
   return String(msg.chat.id) === String(userId);
 }
 
+function send(text) {
+  bot.sendMessage(userId, text, { parse_mode: 'Markdown' });
+}
+
+// /start — список команд
 bot.onText(/\/start/, (msg) => {
   if (!isAuthorized(msg)) return;
-  bot.sendMessage(msg.chat.id, '🤖 Доступные команды: /status /logs /backups /update');
+  send('🤖 Доступные команды:\n/status — Статус контейнеров\n/logs — Логи n8n\n/backups — Бэкап вручную\n/update — Обновление n8n');
 });
 
-bot.onText(/\/status/, async (msg) => {
-  if (!isAuthorized(msg)) return;
+// /status — аптайм и контейнеры
+bot.onText(/\/status/, () => {
   try {
     const uptime = execSync('uptime -p').toString().trim();
     const containers = execSync('docker ps --format "{{.Names}} ({{.Status}})"').toString().trim();
-    bot.sendMessage(msg.chat.id, `🟢 Сервер работает\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
+    send(`🟢 Сервер работает\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
   } catch (err) {
-    bot.sendMessage(msg.chat.id, '❌ Ошибка при получении статуса');
+    send('❌ Ошибка при получении статуса');
   }
 });
 
-bot.onText(/\/logs/, async (msg) => {
-  if (!isAuthorized(msg)) return;
+// /logs — логи n8n
+bot.onText(/\/logs/, () => {
   try {
     const logs = execSync('docker logs --tail=50 n8n-app').toString();
-    bot.sendMessage(msg.chat.id, `📝 Логи n8n:\n\`\`\`\n${logs}\n\`\`\``, { parse_mode: 'Markdown' });
+    send(`📝 Логи n8n:\n\`\`\`\n${logs}\n\`\`\``);
   } catch (err) {
-    bot.sendMessage(msg.chat.id, '❌ Не удалось получить логи');
+    send('❌ Не удалось получить логи');
   }
 });
 
-bot.onText(/\/backups/, async (msg) => {
-  if (!isAuthorized(msg)) return;
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const backupName = `n8n_backup_${timestamp}.tar.gz`;
-  const backupPath = `/tmp/${backupName}`;
-
+// /backups — запуск backup_n8n.sh
+bot.onText(/\/backups/, () => {
   try {
-    const files = [];
-    if (fs.existsSync('/home/node/.n8n/workflows.json')) files.push('/home/node/.n8n/workflows.json');
-    if (fs.existsSync('/home/node/.n8n/credentials.json')) files.push('/home/node/.n8n/credentials.json');
-
-    if (files.length === 0) {
-      bot.sendMessage(msg.chat.id, '❌ Нет доступных данных для бэкапа');
-      return;
-    }
-
-    execSync(`tar -czf ${backupPath} ${files.join(' ')}`);
-    bot.sendDocument(msg.chat.id, backupPath, {}, {
-      filename: backupName,
-      contentType: 'application/gzip'
-    }).then(() => fs.unlinkSync(backupPath));
+    execSync('/opt/n8n-install/scripts/backup_n8n.sh');
+    send('📦 Бэкап запущен. Ожидайте файл в Telegram...');
   } catch (err) {
-    bot.sendMessage(msg.chat.id, '❌ Ошибка при создании бэкапа');
+    send(`❌ Ошибка при запуске backup:\n\`\`\`\n${err.message}\n\`\`\``);
   }
 });
 
-bot.onText(/\/update/, async (msg) => {
-  if (!isAuthorized(msg)) return;
+// /update — обновление n8n
+bot.onText(/\/update/, () => {
   try {
     const latest = execSync('npm view n8n version').toString().trim();
     const current = execSync('docker exec n8n-app n8n -v').toString().trim();
 
     if (latest === current) {
-      bot.sendMessage(msg.chat.id, `✅ У вас уже последняя версия n8n (${current})`);
+      send(`✅ У вас уже последняя версия n8n (${current})`);
     } else {
-      bot.sendMessage(msg.chat.id, `⏬ Обновляю n8n c ${current} до ${latest}...`);
+      send(`⏬ Обновляю n8n с ${current} до ${latest}...`);
       execSync('docker pull n8nio/n8n');
       execSync('docker compose stop n8n');
       execSync('docker compose rm -f n8n');
       execSync('docker compose up -d --no-deps --build n8n');
-      bot.sendMessage(msg.chat.id, `✅ n8n обновлён до версии ${latest}`);
+      send(`✅ n8n обновлён до версии ${latest}`);
     }
   } catch (err) {
-    bot.sendMessage(msg.chat.id, '❌ Обновление завершилось с ошибкой');
+    send('❌ Обновление завершилось с ошибкой');
   }
 });
