@@ -7,35 +7,55 @@ if (( EUID != 0 )); then
   exit 1
 fi
 
+### 1. Ввод пользовательских данных
 clear
-echo "📦 Установка n8n + Telegram-бота + авто-бэкапа"
+echo "📦 Установка n8n + Telegram-бота + SSL + Traefik"
 echo "---------------------------------------------"
 
-### 1. Ввод переменных от пользователя
 read -p "🌐 Введите домен для n8n (например: n8n.example.com): " DOMAIN
+read -p "📧 Введите email для SSL (Let's Encrypt): " EMAIL
+read -p "🔐 Введите пароль для базы данных Postgres: " POSTGRES_PASSWORD
 read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
 read -p "👤 Введите Telegram User ID: " TG_USER_ID
 
-BASE="/opt/n8n-install"
+ENCRYPTION_KEY=$(openssl rand -base64 32)
 
-### 2. Установка зависимостей
+echo ""
+echo "✅ Введённые данные:"
+echo "Домен:              $DOMAIN"
+echo "Email (SSL):        $EMAIL"
+echo "Postgres пароль:    $POSTGRES_PASSWORD"
+echo "ENCRYPTION_KEY:     $ENCRYPTION_KEY"
+echo "TG Bot Token:       $TG_BOT_TOKEN"
+echo "TG User ID:         $TG_USER_ID"
+
+### 2. Сохраняем .env
+cat > .env <<EOF
+DOMAIN=$DOMAIN
+EMAIL=$EMAIL
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+ENCRYPTION_KEY=$ENCRYPTION_KEY
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+TG_USER_ID=$TG_USER_ID
+EOF
+
+### 3. Установка зависимостей
 echo "→ Устанавливаем зависимости..."
 apt update
 apt install -y curl git ufw nodejs npm
 
-### 3. Проверка и установка Docker/Compose
-echo "→ Проверяем Docker..."
+### 4. Установка Docker и Compose
 if ! command -v docker &>/dev/null; then
   echo "→ Docker не найден — устанавливаем..."
   curl -fsSL https://get.docker.com | sh
 fi
 
-echo "→ Запускаем службу Docker..."
-systemctl enable docker 2>/dev/null || true
-systemctl start docker 2>/dev/null || true
+echo "→ Запускаем Docker..."
+systemctl enable docker
+systemctl start docker
 
 if ! docker info &>/dev/null; then
-  echo "❌ Не удалось подключиться к Docker daemon"
+  echo "❌ Docker daemon не запущен"
   exit 1
 fi
 
@@ -49,49 +69,33 @@ else
   COMPOSE_CMD="docker compose"
 fi
 
-echo "→ Используем: $COMPOSE_CMD"
+echo "→ Используется: $COMPOSE_CMD"
 
-### 4. Сборка и запуск контейнеров
+### 5. Запуск n8n и сервисов
 echo "→ Сборка и запуск n8n..."
 $COMPOSE_CMD build
 $COMPOSE_CMD up -d
 
-### 5. Установка и запуск Telegram-бота
+### 6. Установка и запуск Telegram-бота
 echo "→ Устанавливаем и запускаем Telegram-бота..."
 npm install -g pm2
-cd "$BASE/bot"
+cd ./bot
 npm install
 pm2 start bot.js --name n8n-bot --env TG_BOT_TOKEN="$TG_BOT_TOKEN" --env TG_USER_ID="$TG_USER_ID"
 pm2 save
 pm2 startup systemd -u root --hp /root
+cd ..
 
-### 6. Настройка авто-бэкапа через cron
-echo "→ Настраиваем cron для авто-бэкапов..."
-cp "$BASE/backup_n8n.sh" "$BASE/cron/backup_n8n.sh"
-chmod +x "$BASE/cron/backup_n8n.sh"
-echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > "$BASE/cron/.env"
-echo "TG_USER_ID=\"$TG_USER_ID\"" >> "$BASE/cron/.env"
-(crontab -l 2>/dev/null; echo "0 3 * * * $BASE/cron/backup_n8n.sh") | crontab - || echo "❗ Не удалось добавить cron-задачу"
+### 7. Настройка cron для бэкапа
+echo "→ Настраиваем cron для авто-бэкапа..."
+cp ./backup_n8n.sh ./cron/backup_n8n.sh
+chmod +x ./cron/backup_n8n.sh
+echo "TG_BOT_TOKEN=\"$TG_BOT_TOKEN\"" > ./cron/.env
+echo "TG_USER_ID=\"$TG_USER_ID\"" >> ./cron/.env
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/cron/backup_n8n.sh") | crontab - || echo "⚠️ Не удалось добавить cron-задачу"
 
-### 7. Сохранение библиотек и версий
-echo "📦 Сохраняем версии библиотек..."
-mkdir -p "$BASE/n8n_data/backups"
-docker exec -u 0 n8n-app apk info | sort > "$BASE/n8n_data/backups/n8n_installed_apk.txt" || true
-docker exec -u 0 n8n-app /venv/bin/pip list > "$BASE/n8n_data/backups/n8n_installed_pip.txt" || true
-{
-  echo -n "yt-dlp: "; docker exec -u 0 n8n-app yt-dlp --version
-  echo -n "ffmpeg: "; docker exec -u 0 n8n-app ffmpeg -version | head -n 1
-  echo -n "python3: "; docker exec -u 0 n8n-app python3 --version
-} > "$BASE/n8n_data/backups/n8n_versions.txt" || true
-
-VERSIONS=$(cat "$BASE/n8n_data/backups/n8n_versions.txt")
-
-curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
-     -d chat_id=$TG_USER_ID \
-     --data-urlencode "text=✅ Установка завершена!\n\n📄 Библиотеки:\n$VERSIONS\n\n🕒 Автобэкап: 03:00 каждый день\n🌐 Панель: https://$DOMAIN"
-
-### 8. Завершение
-echo "✅ Установка завершена. Проверьте https://$DOMAIN"
-echo "🟢 Telegram-бот запущен и добавлен в автозагрузку"
-echo "🕒 Cron задача настроена на 03:00"
-echo "📦 Версии пакетов сохранены в $BASE/n8n_data/backups/"
+### 8. Финал
+echo ""
+echo "✅ Установка завершена!"
+echo "🌐 Открой: https://$DOMAIN"
+echo "📩 Уведомление будет отправлено в Telegram"
