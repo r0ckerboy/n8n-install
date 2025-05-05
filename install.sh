@@ -63,9 +63,9 @@ docker build -f Dockerfile.n8n -t n8n-custom:latest .
 ### 6. Запуск docker compose
 docker compose up -d
 
-### 7. Настройка cron
-chmod +x ./backup_n8n.sh
-(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
+### 7. Настройка cron для нового backup_n8n.sh
+chmod +x ./scripts/backup_n8n.sh
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/scripts/backup_n8n.sh >> /opt/n8n-install/logs/backup.log 2>&1") | crontab -
 
 ### 8. Уведомление в Telegram
 curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
