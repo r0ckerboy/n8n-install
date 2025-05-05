@@ -28,6 +28,19 @@ bot.on('message', (msg) => {
   }
 });
 
+
+// Команда /update
+bot.onText(/\/update/, () => {
+  send("🔄 Обновляю n8n...");
+  exec('cd /opt/n8n-install && docker build -f Dockerfile.n8n -t n8n-custom:latest . && docker compose up -d n8n', (err, stdout, stderr) => {
+    if (err) {
+      return send(`❌ Ошибка при обновлении n8n:\n${stderr}`);
+    }
+    send("✅ n8n обновлён до последней версии.");
+  });
+});
+
+
 // Команда /status
 bot.onText(/\/status/, () => {
   exec('uptime && docker ps --format "{{.Names}}\t{{.Status}}"', (e, o, er) => 
