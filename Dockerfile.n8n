@@ -1,19 +1,37 @@
-# Dockerfile.n8n — кастомный образ n8n с доп. библиотеками
 FROM docker.n8n.io/n8nio/n8n:latest
 
-# Установка системных пакетов
+# Установка системных утилит
+USER root
 RUN apk add --no-cache \
     python3 \
     py3-pip \
     ffmpeg \
-    && python3 -m venv /venv
+    git \
+    curl \
+    bash \
+    build-base \
+    libffi-dev \
+    openssl-dev \
+    make \
+    gcc \
+    g++ \
+    libc6-compat \
+    libstdc++ \
+    linux-headers \
+    zlib-dev
+
+# Создание виртуального окружения для pip
+RUN python3 -m venv /venv
+ENV PATH="/venv/bin:$PATH"
 
 # Установка pip-библиотек
-RUN /venv/bin/pip install --no-cache-dir \
+RUN pip install --no-cache-dir \
     yt-dlp \
+    ffmpeg-python \
     openai \
-    numpy \
-    opencv-python-headless
+    google-api-python-client \
+    google-auth \
+    telethon
 
 # Установка npm-библиотек
 RUN npm install -g \
@@ -62,8 +80,7 @@ RUN npm install -g \
     adm-zip \
     archiver
 
-# Добавление yt-dlp в PATH
-RUN ln -s /venv/bin/yt-dlp /usr/local/bin/yt-dlp
+# Установка прав
+RUN chown -R node:node /home/node && chmod -R 775 /home/node
 
-# Завершение
-CMD ["tini", "--", "/docker-entrypoint.sh"]
+USER node
