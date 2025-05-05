@@ -1,11 +1,18 @@
+# Используем минимальный образ node.js
 FROM node:18-alpine
 
+# Создаём рабочую директорию
 WORKDIR /app
 
-RUN apk add --no-cache docker-cli
+# Копируем package.json и устанавливаем зависимости
+COPY package.json ./
+RUN npm install --production
 
+# Копируем исходный код бота
 COPY . .
 
-RUN npm install
+# Открываем порт (если понадобится)
+EXPOSE 3000
 
-CMD ["npm", "start"]
+# Запуск бота
+CMD ["node", "bot.js"]
