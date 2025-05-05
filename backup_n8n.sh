@@ -1,45 +1,42 @@
 #!/bin/bash
+set -e
 
-# Загружаем переменные
-source /opt/n8n/cron/.env
+# Папки и переменные
+BACKUP_DIR="/opt/n8n-install/backups"
+mkdir -p "$BACKUP_DIR"
+NOW=$(date +"%Y-%m-%d-%H-%M")
+ARCHIVE_NAME="backup-$NOW.zip"
+ARCHIVE_PATH="$BACKUP_DIR/$ARCHIVE_NAME"
 
-TODAY=$(date +%F)
-BASE="/opt/n8n"
-ZIP_PATH="$BASE/n8n_data/backups/n8n_backup_$TODAY.zip"
-TMP_DIR="$BASE/n8n_data/backups/tmp_$TODAY"
+BASE_DIR="/opt/n8n-install"
+ENV_FILE="$BASE_DIR/.env"
+EXPORT_FILE="$BASE_DIR/n8n_workflows.json"
+SQL_FILE="$BASE_DIR/db.sql"
 
-mkdir -p "$TMP_DIR"
+# Загружаем переменные окружения
+source "$ENV_FILE"
+BOT_TOKEN="$TG_BOT_TOKEN"
+USER_ID="$TG_USER_ID"
 
-# 🛠 Экспорт workflow из контейнера n8n
-docker exec -u node n8n-app n8n export:workflow --all --separate --output=/tmp/workflows || true
-docker cp n8n-app:/tmp/workflows/. "$TMP_DIR" 2>/dev/null || true
+# 1. Экспорт workflows
+echo "📤 Экспортируем workflows..."
+docker exec n8n n8n export:workflow --output=/data/export.json
+docker cp n8n:/data/export.json "$EXPORT_FILE"
 
-# 📦 Копируем БД и конфиг (если есть)
-[ -f "$BASE/n8n_data/database.sqlite" ] && cp "$BASE/n8n_data/database.sqlite" "$TMP_DIR"
-[ -f "$BASE/n8n_data/config" ] && cp "$BASE/n8n_data/config" "$TMP_DIR"
+# 2. Ключ шифрования
+echo "$N8N_ENCRYPTION_KEY" > "$BASE_DIR/encryption_key.txt"
 
-# 📦 Архивируем
-if ls "$TMP_DIR"/* >/dev/null 2>&1; then
-  zip -j "$ZIP_PATH" "$TMP_DIR"/*
+# 3. Бэкап базы
+docker exec -e PGPASSWORD=$POSTGRES_PASSWORD postgres pg_dump -U postgres -F p > "$SQL_FILE"
 
-  # Отправка архива в Telegram
-  curl -F "document=@$ZIP_PATH" \
-       -F "caption=📦 Бэкап n8n с $DOMAIN за $TODAY" \
-       "https://api.telegram.org/bot$TG_BOT_TOKEN/sendDocument?chat_id=$TG_USER_ID"
-else
-  # Нет файлов — только текст
-  curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
-    -d chat_id="$TG_USER_ID" \
-    -d text="ℹ️ Бэкап за $TODAY: не найдено данных для сохранения."
-fi
+# 4. Архивируем
+zip -j "$ARCHIVE_PATH" "$EXPORT_FILE" "$BASE_DIR/encryption_key.txt" "$ENV_FILE" "$SQL_FILE"
 
-# 🧹 Очистка
-rm -rf "$TMP_DIR"
+# 5. Отправка в Telegram
+echo "📨 Отправляем архив в Telegram..."
+curl -s -F document=@"$ARCHIVE_PATH" "https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$USER_ID&caption=📦 Бэкап n8n: $NOW"
 
-# Удаляем старые архивы
-find "$BASE/n8n_data/backups" -type f -name "n8n_backup_*.zip" -mtime +7 -exec rm {} \;
+# 6. Очистка
+rm -f "$EXPORT_FILE" "$BASE_DIR/encryption_key.txt" "$SQL_FILE" "$ARCHIVE_PATH"
 
-# Завершающее сообщение
-curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
-  -d chat_id="$TG_USER_ID" \
-  -d text="✅ Скрипт бэкапа завершён на $DOMAIN"
+echo "✅ Бэкап завершён и удалён локально."
