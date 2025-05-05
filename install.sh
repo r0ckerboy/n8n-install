@@ -1,55 +1,66 @@
-#!/bin/bash
+ #!/bin/bash
+ set -e
 
-set -e
++### 0. Проверка прав
++if (( EUID != 0 )); then
++  echo "❗ Скрипт должен быть запущен от root: sudo ./install.sh"
++  exit 1
++fi
 
-### 1. Ввод переменных от пользователя
+ ### 1. Ввод переменных от пользователя
+ …
 
-clear
-echo "=== 🚀 Установка n8n с Telegram-ботом ==="
-read -p "Введите домен (например n8n.example.com): " DOMAIN
-read -p "Введите email (для SSL): " EMAIL
-read -p "Введите токен Telegram-бота: " TG_BOT_TOKEN
-read -p "Введите ваш Telegram ID: " TG_USER_ID
-read -p "Введите пароль от Postgres: " DB_PASSWORD
+ ### 4. Установка базовых утилит
+ echo "→ Устанавливаем зависимости..."
+ sudo apt update
+ sudo apt install -y curl git ufw nodejs npm
 
-UUID=$(cat /proc/sys/kernel/random/uuid)
-echo "→ Сгенерирован ключ шифрования: $UUID"
+-### 5. Проверка Docker Compose
+-if ! docker compose version &>/dev/null; then
+-  echo "❌ Docker не найден. Установите Docker вручную: https://docs.docker.com/engine/install/ubuntu/"
+-  exit 1
+-fi
++### 5. Проверка и установка Docker Engine + Docker Compose
++
++# 5.1 Docker CLI
++if ! command -v docker &>/dev/null; then
++  echo "→ Docker CLI не найден — устанавливаю Docker Engine…"
++  curl -fsSL https://get.docker.com | sh
++fi
++
++# 5.2 Запуск Docker-демона
++echo "→ Включаю и запускаю службу docker…"
++systemctl enable docker 2>/dev/null || true
++systemctl start  docker 2>/dev/null || true
++
++# 5.3 Проверка доступа к демону
++if ! docker info &>/dev/null; then
++  echo "❌ Не удалось подключиться к Docker daemon."
++  echo "   Проверьте статус: systemctl status docker"
++  exit 1
++fi
++
++# 5.4 Docker Compose: v2 (плагин) или v1 (бинарь)
++if docker compose version &>/dev/null; then
++  COMPOSE_CMD="docker compose"
++elif command -v docker-compose &>/dev/null; then
++  COMPOSE_CMD="docker-compose"
++else
++  echo "→ Docker Compose не найден — ставлю плагин и бинарь…"
++  apt update
++  apt install -y docker-compose-plugin docker-compose
++  COMPOSE_CMD="docker compose"
++fi
++
++echo "→ Будем использовать: $COMPOSE_CMD"
 
-### 2. Подготовка директорий
-
-BASE="/opt/n8n-install"
-mkdir -p "$BASE/n8n_data" "$BASE/traefik_data" "$BASE/cron"
-chmod 600 "$BASE/traefik_data/acme.json" 2>/dev/null || touch "$BASE/traefik_data/acme.json" && chmod 600 "$BASE/traefik_data/acme.json"
-
-### 3. Создание .env
-cat <<EOF > .env
-DOMAIN=$DOMAIN
-EMAIL=$EMAIL
-TG_BOT_TOKEN=$TG_BOT_TOKEN
-TG_USER_ID=$TG_USER_ID
-DB_PASSWORD=$DB_PASSWORD
-ENCRYPTION_KEY=$UUID
-EOF
-
-### 4. Установка зависимостей
-
-echo "→ Устанавливаем зависимости..."
-sudo apt update
-sudo apt install -y curl git ufw nodejs npm
-
-### 5. Проверка Docker Compose
-if ! docker compose version &>/dev/null; then
-  echo "❌ Docker не найден. Установите Docker вручную: https://docs.docker.com/engine/install/ubuntu/"
-  exit 1
-fi
-
-### 6. Сборка и запуск контейнеров
-
-echo "→ Сборка и запуск n8n..."
-docker compose build
-
-echo "→ Запуск контейнеров..."
-docker compose up -d
+ ### 6. Сборка и запуск контейнеров
+ echo "→ Сборка и запуск n8n..."
+-$COMPOSE_CMD build
++$COMPOSE_CMD build
+ echo "→ Запуск контейнеров..."
+-$COMPOSE_CMD up -d
++$COMPOSE_CMD up -d
 
 ### 7. Установка и запуск Telegram-бота
 
