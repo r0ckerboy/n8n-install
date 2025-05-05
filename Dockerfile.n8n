@@ -1,40 +1,37 @@
-FROM docker.n8n.io/n8nio/n8n:latest
 
-# Установка системных утилит
+# Базовый образ
+FROM n8nio/n8n:latest
+
+# Установка зависимостей для node-gyp и pip
 USER root
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
-    git \
-    curl \
-    bash \
-    build-base \
-    libffi-dev \
-    openssl-dev \
-    make \
-    gcc \
-    g++ \
-    libc6-compat \
-    libstdc++ \
-    linux-headers \
-    zlib-dev
+RUN apt-get update && apt-get install -y \
+  build-essential \
+  python3-dev \
+  libffi-dev \
+  libssl-dev \
+  gcc \
+  g++ \
+  make \
+  curl \
+  git \
+  && apt-get clean
 
-# Создание виртуального окружения для pip
-RUN python3 -m venv /venv
-ENV PATH="/venv/bin:$PATH"
+# Установка pip
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3
 
-# Установка pip-библиотек
-RUN pip install --no-cache-dir \
-    yt-dlp \
-    ffmpeg-python \
+# Установка Python-библиотек по одной, с обработкой ошибок
+RUN for lib in \
     openai \
-    google-api-python-client \
-    google-auth \
-    telethon
+    numpy \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    && echo "---"; do \
+  echo "📦 pip install $lib" && pip install "$lib" || echo "⚠️ pip: $lib не встал, продолжаем..."; \
+done
 
-# Установка npm-библиотек
-RUN npm install -g \
+# Установка Node.js-библиотек по одной, с обработкой ошибок
+RUN for pkg in \
     axios \
     node-fetch \
     form-data \
@@ -53,19 +50,17 @@ RUN npm install -g \
     openai \
     @tensorflow/tfjs-node \
     langchain \
+    langchain-openai \
     node-telegram-bot-api \
     discord.js \
     vk-io \
     whatsapp-web.js \
     fluent-ffmpeg \
     ffmpeg-static \
+    yt-dlp-exec \
     google-tts-api \
     @vitalets/google-translate-token \
     node-wav \
-    lame \
-    googleapis \
-    @supabase/supabase-js \
-    pg \
     mongoose \
     ioredis \
     bcrypt \
@@ -76,9 +71,10 @@ RUN npm install -g \
     prom-client \
     node-downloader-helper \
     adm-zip \
-    archiver
+    archiver \
+    ; do \
+  echo "🔧 Устанавливаем $pkg..." && npm install -g "$pkg" || echo "⚠️ Не удалось установить $pkg, продолжаем..."; \
+done
 
-# Установка прав
-RUN chown -R node:node /home/node && chmod -R 775 /home/node
-
+# Возврат пользователя
 USER node
