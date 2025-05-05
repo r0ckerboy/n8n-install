@@ -7,31 +7,35 @@ if (( EUID != 0 )); then
   exit 1
 fi
 
-### 1. Переменные
+clear
+echo "📦 Установка n8n + Telegram-бота + авто-бэкапа"
+echo "---------------------------------------------"
+
+### 1. Ввод переменных от пользователя
+read -p "🌐 Введите домен для n8n (например: n8n.example.com): " DOMAIN
+read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
+read -p "👤 Введите Telegram User ID: " TG_USER_ID
+
 BASE="/opt/n8n-install"
-TG_BOT_TOKEN="ВАШ_ТОКЕН_БОТА"
-TG_USER_ID="ВАШ_ID_ПОЛЬЗОВАТЕЛЯ"
-DOMAIN="yourdomain.com" # ← Замените на свой домен
 
 ### 2. Установка зависимостей
 echo "→ Устанавливаем зависимости..."
 apt update
 apt install -y curl git ufw nodejs npm
 
-### 3. Проверка и установка Docker Engine + Compose
+### 3. Проверка и установка Docker/Compose
 echo "→ Проверяем Docker..."
 if ! command -v docker &>/dev/null; then
   echo "→ Docker не найден — устанавливаем..."
   curl -fsSL https://get.docker.com | sh
 fi
 
-echo "→ Включаем и запускаем службу Docker..."
+echo "→ Запускаем службу Docker..."
 systemctl enable docker 2>/dev/null || true
 systemctl start docker 2>/dev/null || true
 
 if ! docker info &>/dev/null; then
   echo "❌ Не удалось подключиться к Docker daemon"
-  echo "   Проверьте: systemctl status docker"
   exit 1
 fi
 
@@ -45,7 +49,7 @@ else
   COMPOSE_CMD="docker compose"
 fi
 
-echo "→ Используется: $COMPOSE_CMD"
+echo "→ Используем: $COMPOSE_CMD"
 
 ### 4. Сборка и запуск контейнеров
 echo "→ Сборка и запуск n8n..."
@@ -57,8 +61,7 @@ echo "→ Устанавливаем и запускаем Telegram-бота..."
 npm install -g pm2
 cd "$BASE/bot"
 npm install
-npm install node-telegram-bot-api archiver axios winston
-pm2 start bot.js --name n8n-bot
+pm2 start bot.js --name n8n-bot --env TG_BOT_TOKEN="$TG_BOT_TOKEN" --env TG_USER_ID="$TG_USER_ID"
 pm2 save
 pm2 startup systemd -u root --hp /root
 
@@ -85,10 +88,10 @@ VERSIONS=$(cat "$BASE/n8n_data/backups/n8n_versions.txt")
 
 curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
      -d chat_id=$TG_USER_ID \
-     --data-urlencode "text=✅ Установка завершена!\n\n📄 Библиотеки:\n$VERSIONS\n\n🕒 Автобэкап: 03:00 каждый день (если cron добавлен)\n🌐 Панель: https://$DOMAIN"
+     --data-urlencode "text=✅ Установка завершена!\n\n📄 Библиотеки:\n$VERSIONS\n\n🕒 Автобэкап: 03:00 каждый день\n🌐 Панель: https://$DOMAIN"
 
 ### 8. Завершение
-echo "✅ Установка завершена. Проверьте https://$DOMAIN в браузере."
+echo "✅ Установка завершена. Проверьте https://$DOMAIN"
 echo "🟢 Telegram-бот запущен и добавлен в автозагрузку"
-echo "🕒 Cron задача: бэкап каждый день в 03:00"
-echo "📦 Списки пакетов сохранены в $BASE/n8n_data/backups/"
+echo "🕒 Cron задача настроена на 03:00"
+echo "📦 Версии пакетов сохранены в $BASE/n8n_data/backups/"
