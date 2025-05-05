@@ -42,13 +42,14 @@ bot.onText(/\/logs/, () => {
   }
 });
 
-// /backups — запуск backup_n8n.sh
+// Команда /backups — запускает backup_n8n.sh
 bot.onText(/\/backups/, () => {
+  if (!isAuthorized(msg)) return;
   try {
     execSync('/opt/n8n-install/scripts/backup_n8n.sh');
     send('📦 Бэкап запущен. Ожидайте файл в Telegram...');
   } catch (err) {
-    send(`❌ Ошибка при запуске backup:\n\`\`\`\n${err.message}\n\`\`\``);
+    send(`❌ Ошибка при запуске backup:\n\`\`\`\n${err.message}\n\`\`\``, { parse_mode: 'Markdown' });
   }
 });
 
