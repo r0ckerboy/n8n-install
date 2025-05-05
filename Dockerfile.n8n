@@ -53,14 +53,12 @@ RUN npm install -g \
     openai \
     @tensorflow/tfjs-node \
     langchain \
-    langchain-openai \
     node-telegram-bot-api \
     discord.js \
     vk-io \
     whatsapp-web.js \
     fluent-ffmpeg \
     ffmpeg-static \
-    yt-dlp-exec \
     google-tts-api \
     @vitalets/google-translate-token \
     node-wav \
