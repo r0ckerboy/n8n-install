@@ -25,11 +25,6 @@ services:
       - NODE_ENV=production
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls.certresolver=myresolver"
     volumes:
       - n8n_data:/home/node/.n8n
       - ./data:/data
@@ -73,6 +68,15 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
+
+  n8n-bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: n8n-bot
+    restart: always
+    env_file:
+      - ./bot/.env
 
 volumes:
   n8n_data:
