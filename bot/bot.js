@@ -1,7 +1,6 @@
 const TelegramBot = require('node-telegram-bot-api');
-const { execSync, exec } = require('child_process');
+const { execSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 const token = process.env.TG_BOT_TOKEN;
@@ -23,11 +22,7 @@ bot.onText(/\/status/, async (msg) => {
   try {
     const uptime = execSync('uptime -p').toString().trim();
     const containers = execSync('docker ps --format "{{.Names}} ({{.Status}})"').toString().trim();
-    bot.sendMessage(msg.chat.id, `🟢 Сервер работает
-⏱ Uptime: ${uptime}
-
-📦 Контейнеры:
-${containers}`);
+    bot.sendMessage(msg.chat.id, `🟢 Сервер работает\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
   } catch (err) {
     bot.sendMessage(msg.chat.id, '❌ Ошибка при получении статуса');
   }
@@ -37,10 +32,7 @@ bot.onText(/\/logs/, async (msg) => {
   if (!isAuthorized(msg)) return;
   try {
     const logs = execSync('docker logs --tail=50 n8n-app').toString();
-    bot.sendMessage(msg.chat.id, `📝 Логи n8n:
-\`\`\`
-${logs}
-\`\`\``, { parse_mode: 'Markdown' });
+    bot.sendMessage(msg.chat.id, `📝 Логи n8n:\n\`\`\`\n${logs}\n\`\`\``, { parse_mode: 'Markdown' });
   } catch (err) {
     bot.sendMessage(msg.chat.id, '❌ Не удалось получить логи');
   }
