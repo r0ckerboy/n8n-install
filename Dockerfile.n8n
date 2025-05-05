@@ -1,36 +1,35 @@
 
-# Базовый образ
+# Базовый образ n8n (на Alpine)
 FROM n8nio/n8n:latest
 
-# Установка зависимостей для node-gyp и pip
+# Переключаемся на root
 USER root
-RUN apt-get update && apt-get install -y \
-  build-essential \
-  python3-dev \
-  libffi-dev \
-  libssl-dev \
-  gcc \
-  g++ \
-  make \
+
+# Установка зависимостей через apk (Alpine)
+RUN apk add --no-cache \
+  bash \
   curl \
   git \
-  && apt-get clean
+  make \
+  g++ \
+  gcc \
+  python3 \
+  py3-pip \
+  libffi-dev \
+  openssl-dev
 
-# Установка pip
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3
-
-# Установка Python-библиотек по одной, с обработкой ошибок
+# Установка pip-библиотек по одной (с обработкой ошибок)
 RUN for lib in \
     openai \
     numpy \
     requests \
     beautifulsoup4 \
     lxml \
-    && echo "---"; do \
+    ; do \
   echo "📦 pip install $lib" && pip install "$lib" || echo "⚠️ pip: $lib не встал, продолжаем..."; \
 done
 
-# Установка Node.js-библиотек по одной, с обработкой ошибок
+# Установка npm-библиотек по одной (с обработкой ошибок)
 RUN for pkg in \
     axios \
     node-fetch \
@@ -76,5 +75,5 @@ RUN for pkg in \
   echo "🔧 Устанавливаем $pkg..." && npm install -g "$pkg" || echo "⚠️ Не удалось установить $pkg, продолжаем..."; \
 done
 
-# Возврат пользователя
+# Возвращаем пользователя
 USER node
