@@ -1,106 +1,94 @@
-require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
-const { exec } = require('child_process');
+const { execSync, exec } = require('child_process');
 const fs = require('fs');
-const archiver = require('archiver');
+const path = require('path');
+require('dotenv').config();
 
-const {
-  TG_BOT_TOKEN,
-  TG_USER_ID,
-  DOMAIN,
-  POSTGRES_PASSWORD,
-  N8N_ENCRYPTION_KEY
-} = process.env;
+const token = process.env.TG_BOT_TOKEN;
+const userId = process.env.TG_USER_ID;
 
-if (!TG_BOT_TOKEN || !TG_USER_ID || !DOMAIN || !POSTGRES_PASSWORD || !N8N_ENCRYPTION_KEY) {
-  console.error('❌ Не заданы необходимые переменные окружения.');
-  process.exit(1);
+const bot = new TelegramBot(token, { polling: true });
+
+function isAuthorized(msg) {
+  return String(msg.chat.id) === String(userId);
 }
 
-const bot = new TelegramBot(TG_BOT_TOKEN, { polling: true });
-const send = (msg, opt = {}) => bot.sendMessage(TG_USER_ID, msg, opt);
+bot.onText(/\/start/, (msg) => {
+  if (!isAuthorized(msg)) return;
+  bot.sendMessage(msg.chat.id, '🤖 Доступные команды: /status /logs /backups /update');
+});
 
-// Проверка ID пользователя
-bot.on('message', (msg) => {
-  if (msg.chat.id.toString() !== TG_USER_ID) {
-    // Игнорируем сообщения от других пользователей
-    return bot.sendMessage(msg.chat.id, "❌ У вас нет прав для использования этого бота.");
+bot.onText(/\/status/, async (msg) => {
+  if (!isAuthorized(msg)) return;
+  try {
+    const uptime = execSync('uptime -p').toString().trim();
+    const containers = execSync('docker ps --format "{{.Names}} ({{.Status}})"').toString().trim();
+    bot.sendMessage(msg.chat.id, `🟢 Сервер работает
+⏱ Uptime: ${uptime}
+
+📦 Контейнеры:
+${containers}`);
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, '❌ Ошибка при получении статуса');
   }
 });
 
+bot.onText(/\/logs/, async (msg) => {
+  if (!isAuthorized(msg)) return;
+  try {
+    const logs = execSync('docker logs --tail=50 n8n-app').toString();
+    bot.sendMessage(msg.chat.id, `📝 Логи n8n:
+\`\`\`
+${logs}
+\`\`\``, { parse_mode: 'Markdown' });
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, '❌ Не удалось получить логи');
+  }
+});
 
-// Команда /update
-bot.onText(/\/update/, () => {
-  send("🔄 Обновляю n8n...");
-  exec('cd /opt/n8n-install && docker build -f Dockerfile.n8n -t n8n-custom:latest . && docker compose up -d n8n', (err, stdout, stderr) => {
-    if (err) {
-      return send(`❌ Ошибка при обновлении n8n:\n${stderr}`);
+bot.onText(/\/backups/, async (msg) => {
+  if (!isAuthorized(msg)) return;
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupName = `n8n_backup_${timestamp}.tar.gz`;
+  const backupPath = `/tmp/${backupName}`;
+
+  try {
+    const files = [];
+    if (fs.existsSync('/home/node/.n8n/workflows.json')) files.push('/home/node/.n8n/workflows.json');
+    if (fs.existsSync('/home/node/.n8n/credentials.json')) files.push('/home/node/.n8n/credentials.json');
+
+    if (files.length === 0) {
+      bot.sendMessage(msg.chat.id, '❌ Нет доступных данных для бэкапа');
+      return;
     }
-    send("✅ n8n обновлён до последней версии.");
-  });
+
+    execSync(`tar -czf ${backupPath} ${files.join(' ')}`);
+    bot.sendDocument(msg.chat.id, backupPath, {}, {
+      filename: backupName,
+      contentType: 'application/gzip'
+    }).then(() => fs.unlinkSync(backupPath));
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, '❌ Ошибка при создании бэкапа');
+  }
 });
 
+bot.onText(/\/update/, async (msg) => {
+  if (!isAuthorized(msg)) return;
+  try {
+    const latest = execSync('npm view n8n version').toString().trim();
+    const current = execSync('docker exec n8n-app n8n -v').toString().trim();
 
-// Команда /status
-bot.onText(/\/status/, () => {
-  exec('uptime && docker ps --format "{{.Names}}\t{{.Status}}"', (e, o, er) => 
-    send(er ? `❌ ${er}` : `📊 *Статус:*\n\`\`\`\n${o}\n\`\`\``, { parse_mode: 'Markdown' })
-  );
-});
-
-// Команда /logs
-bot.onText(/\/logs/, () => {
-  exec('docker logs --tail 100 n8n-app', (e, o, er) => 
-    send(er ? `❌ ${er}` : `📝 *Логи n8n:*\n\`\`\`\n${o}\n\`\`\``, { parse_mode: 'Markdown' })
-  );
-});
-
-// Команда /backup
-bot.onText(/\/backup/, () => {
-  const exportCmd = 'docker exec n8n-app n8n export:workflow --all --separate --output=/tmp/workflows';
-  exec(exportCmd, (e, o, er) => {
-    if (er) return send(`❌ Ошибка при экспорте: ${er}`);
-
-    const tmpBackupDir = '/tmp/n8n_backup';
-    const archivePath = '/tmp/n8n_backup.zip';
-
-    fs.rmSync(tmpBackupDir, { recursive: true, force: true });
-    fs.rmSync(archivePath, { force: true });
-    fs.mkdirSync(tmpBackupDir, { recursive: true });
-
-    exec('docker cp n8n-app:/tmp/workflows/. ' + tmpBackupDir, (e2) => {
-      if (e2) return send(`❌ Не удалось скопировать файлы: ${e2}`);
-
-      const extraFiles = [
-        '/opt/n8n/n8n_data/database.sqlite',
-        '/opt/n8n/n8n_data/config',
-        '/opt/n8n/n8n_data/postgres_password.txt',
-        '/opt/n8n/n8n_data/n8n_encryption_key.txt'
-      ];
-
-      for (const file of extraFiles) {
-        if (fs.existsSync(file)) {
-          fs.copyFileSync(file, `${tmpBackupDir}/${path.basename(file)}`);
-        }
-      }
-
-      const output = fs.createWriteStream(archivePath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
-
-      archive.pipe(output);
-      archive.directory(tmpBackupDir, false);
-      archive.finalize();
-
-      output.on('close', () => {
-        send(`✅ Бэкап завершен и архивирован.\nСсылка для скачивания: \n\`\`\`\n${archivePath}\n\`\`\``);
-      });
-    });
-  });
-});
-
-// Команда /update
-bot.onText(/\/update/, () => {
-  exec('docker pull kalininlive/n8n:yt-dlp && docker-compose down && docker-compose up -d', (e, o, er) => 
-    send(er ? `❌ Ошибка при обновлении: ${er}` : `✅ Обновление завершено:\n\`\`\`\n${o}\n\`\`\``, { parse_mode: 'Markdown' })
-  );
+    if (latest === current) {
+      bot.sendMessage(msg.chat.id, `✅ У вас уже последняя версия n8n (${current})`);
+    } else {
+      bot.sendMessage(msg.chat.id, `⏬ Обновляю n8n c ${current} до ${latest}...`);
+      execSync('docker pull n8nio/n8n');
+      execSync('docker compose stop n8n');
+      execSync('docker compose rm -f n8n');
+      execSync('docker compose up -d --no-deps --build n8n');
+      bot.sendMessage(msg.chat.id, `✅ n8n обновлён до версии ${latest}`);
+    }
+  } catch (err) {
+    bot.sendMessage(msg.chat.id, '❌ Обновление завершилось с ошибкой');
+  }
 });
