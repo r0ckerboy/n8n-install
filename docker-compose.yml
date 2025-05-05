@@ -77,6 +77,8 @@ services:
     restart: always
     env_file:
       - ./bot/.env
+    volumes:
+      - ./bot/.env:/app/.env
 
 volumes:
   n8n_data:
