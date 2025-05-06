@@ -1,10 +1,15 @@
 const TelegramBot = require('node-telegram-bot-api');
 const { execSync, exec } = require('child_process');
 const fs = require('fs');
-require('dotenv').config();
 
 const token = process.env.TG_BOT_TOKEN;
 const userId = process.env.TG_USER_ID;
+
+if (!token || !userId) {
+  console.error("❌ Не заданы необходимые переменные окружения.");
+  process.exit(1);
+}
+
 const bot = new TelegramBot(token, { polling: true });
 
 function isAuthorized(msg) {
