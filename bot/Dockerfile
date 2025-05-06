@@ -1,15 +1,23 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
+# Установка нужных утилит
+RUN apk add --no-cache \
+  zip \
+  bash \
+  curl \
+  docker-cli \
+  coreutils \
+  procps
+
+# Создание рабочей директории
 WORKDIR /app
 
-# Установка зависимостей
-COPY package.json ./
+# Копирование зависимостей и установка
+COPY package*.json ./
 RUN npm install
 
 # Копирование кода
-COPY bot.js .
+COPY . .
 
-# Копирование .env (будет передано как volume или через docker-compose)
-COPY .env .env
-
+# Запуск бота
 CMD ["npm", "start"]
