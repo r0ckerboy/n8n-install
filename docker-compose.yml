@@ -9,6 +9,12 @@ services:
     restart: always
     ports:
       - "5678:5678"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls.certresolver=myresolver"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=n8n-postgres
@@ -75,10 +81,12 @@ services:
       dockerfile: Dockerfile
     container_name: n8n-bot
     restart: always
-    env_file:
-      - ./bot/.env
-    volumes:
-      - ./bot/.env:/app/.env
+    environment:
+      - TG_BOT_TOKEN=${BOT_TOKEN}
+      - TG_USER_ID=${ADMIN_ID}
+      - DOMAIN=${DOMAIN}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
 
 volumes:
   n8n_data:
