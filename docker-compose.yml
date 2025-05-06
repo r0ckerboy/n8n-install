@@ -80,9 +80,6 @@ services:
     environment:
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
       - TG_USER_ID=${TG_USER_ID}
-      - DOMAIN=${DOMAIN}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
     labels:
       - "traefik.enable=false"
 
