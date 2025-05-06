@@ -24,7 +24,6 @@
 ```bash
 bash <(curl -s https://raw.githubusercontent.com/kalininlive/n8n-beget-install/main/install.sh)
 ```
-
 **2. Введи данные:**
 
 * Домен для n8n
