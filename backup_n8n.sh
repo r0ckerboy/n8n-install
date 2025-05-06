@@ -1,58 +1,52 @@
 #!/bin/bash
 set -e
 
-# === Конфигурация ===
-BACKUP_DIR="/opt/n8n-install/backups"
-mkdir -p "$BACKUP_DIR"
-NOW=$(date +"%Y-%m-%d-%H-%M")
-ARCHIVE_NAME="backup-$NOW.zip"
-ARCHIVE_PATH="$BACKUP_DIR/$ARCHIVE_NAME"
-BASE_DIR="/opt/n8n-install"
-ENV_FILE="$BASE_DIR/.env"
-EXPORT_FILE="$BASE_DIR/n8n_workflows.json"
-SQL_FILE="$BASE_DIR/db.sql"
+# === Пути ===
+DATE=$(date +"%Y-%m-%d-%H-%M")
+DIR="/opt/n8n-install"
+BACKUP_DIR="$DIR/backups"
+N8N_CONTAINER="n8n-app"
+ZIP_NAME="n8n-backup-$DATE.zip"
+TMP_PATH="/tmp/$ZIP_NAME"
 
-# === Загрузка переменных окружения ===
-source "$ENV_FILE"
+# === Переменные из .env ===
+source "$DIR/.env"
 BOT_TOKEN="$TG_BOT_TOKEN"
 USER_ID="$TG_USER_ID"
-PASSWORD="${BACKUP_PASSWORD:-$(openssl rand -hex 8)}"
 
-# === Обработка ошибок ===
-function handle_error {
-  curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
-    -d chat_id="$USER_ID" \
-    -d text="❌ Ошибка при бэкапе n8n: $1"
-  exit 1
+# === Логи ===
+LOG_FILE="$DIR/logs/backup.log"
+mkdir -p "$DIR/logs"
+mkdir -p "$BACKUP_DIR"
+
+# === Логирование ===
+log() {
+  echo "[$(date +"%Y-%m-%d %H:%M:%S")] $*" | tee -a "$LOG_FILE"
 }
-trap 'handle_error "$BASH_COMMAND"' ERR
 
-# === Экспорт Workflows из контейнера n8n-app ===
-docker exec n8n-app n8n export:workflow --output=/data/export.json
-docker cp n8n-app:/data/export.json "$EXPORT_FILE"
+log "🚀 Запуск резервного копирования"
 
-# === Сохраняем ключ шифрования ===
-echo "$N8N_ENCRYPTION_KEY" > "$BASE_DIR/encryption_key.txt"
+# === Получение файлов из контейнера ===
+log "📥 Экспортируем workflows и credentials"
+docker exec "$N8N_CONTAINER" n8n export:workflow --all --output=/data/workflows.json
+docker exec "$N8N_CONTAINER" n8n export:credentials --all --decrypted --output=/data/credentials.json
 
-# === Бэкап базы данных из контейнера n8n-postgres ===
-docker exec -e PGPASSWORD=$POSTGRES_PASSWORD n8n-postgres pg_dump -U postgres -F p > "$SQL_FILE"
+# === Копируем из volume на хост ===
+cp "$DIR/data/workflows.json" "$BACKUP_DIR/workflows-$DATE.json"
+cp "$DIR/data/credentials.json" "$BACKUP_DIR/credentials-$DATE.json"
 
-# === Архивация с паролем ===
-zip -P "$PASSWORD" -j "$ARCHIVE_PATH" "$EXPORT_FILE" "$BASE_DIR/encryption_key.txt" "$ENV_FILE" "$SQL_FILE"
+# === Создание архива ===
+cd "$BACKUP_DIR"
+zip -q "$TMP_PATH" "workflows-$DATE.json" "credentials-$DATE.json"
 
-# === Отправка архива в Telegram ===
-curl -s -F document=@"$ARCHIVE_PATH" \
-  "https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$USER_ID&caption=📦 Зашифрованный бэкап n8n: $NOW"
+# === Очистка лишнего
+rm "workflows-$DATE.json" "credentials-$DATE.json"
 
-# === Отправка пароля отдельным сообщением ===
-curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
-  -d chat_id="$USER_ID" \
-  -d text="🔐 Пароль к архиву: $PASSWORD"
+# === Отправка в Telegram
+log "📤 Отправка архива в Telegram"
+curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" \
+  -F chat_id="$USER_ID" \
+  -F document=@"$TMP_PATH" \
+  -F caption="📦 Резервная копия n8n от $DATE"
 
-# === Очистка временных файлов ===
-rm -f "$EXPORT_FILE" "$BASE_DIR/encryption_key.txt" "$SQL_FILE" "$ARCHIVE_PATH"
-
-# === Очистка логов старше 7 дней ===
-find "$BASE_DIR" -name "*.log" -type f -mtime +7 -delete
-
-echo "✅ Бэкап завершён и очищен."
+log "✅ Резервное копирование завершено"
