@@ -2,19 +2,11 @@ version: "3.8"
 
 services:
   n8n:
-    build:
-      context: .
-      dockerfile: Dockerfile.n8n
+    image: n8nio/n8n
     container_name: n8n-app
     restart: always
     ports:
       - "5678:5678"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls.certresolver=myresolver"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=n8n-postgres
@@ -27,16 +19,19 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=admin
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - WEBHOOK_URL=https://${DOMAIN}/
-      - GENERIC_TIMEZONE=Asia/Yekaterinburg
+      - GENERIC_TIMEZONE=Europe/Amsterdam
       - NODE_ENV=production
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - N8N_RUNNERS_ENABLED=true
     volumes:
       - n8n_data:/home/node/.n8n
-      - ./data:/data
     depends_on:
       - n8n-postgres
       - n8n-redis
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.n8n.entrypoints=websecure"
+      - "traefik.http.routers.n8n.tls.certresolver=myresolver"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
 
   n8n-postgres:
     image: postgres:15-alpine
@@ -56,13 +51,14 @@ services:
     volumes:
       - redis_data:/data
 
-  n8n-traefik:
+  traefik:
     image: traefik:2.10.4
     container_name: n8n-traefik
     restart: always
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
@@ -82,11 +78,13 @@ services:
     container_name: n8n-bot
     restart: always
     environment:
-      - TG_BOT_TOKEN=${BOT_TOKEN}
-      - TG_USER_ID=${ADMIN_ID}
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_USER_ID=${TG_USER_ID}
       - DOMAIN=${DOMAIN}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+    labels:
+      - "traefik.enable=false"
 
 volumes:
   n8n_data:
