@@ -2,7 +2,9 @@ version: "3.8"
 
 services:
   n8n:
-    image: n8nio/n8n
+    build:
+      context: .
+      dockerfile: Dockerfile.n8n
     container_name: n8n-app
     restart: always
     ports:
@@ -19,13 +21,15 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=admin
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - WEBHOOK_URL=https://${DOMAIN}/
-      - GENERIC_TIMEZONE=Europe/Amsterdam
+      - GENERIC_TIMEZONE=Asia/Yekaterinburg
       - NODE_ENV=production
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
     volumes:
       - n8n_data:/home/node/.n8n
+      - ./data:/data
     depends_on:
       - n8n-postgres
-      - n8n-redis
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
@@ -51,14 +55,13 @@ services:
     volumes:
       - redis_data:/data
 
-  traefik:
+  n8n-traefik:
     image: traefik:2.10.4
     container_name: n8n-traefik
     restart: always
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
@@ -80,6 +83,11 @@ services:
     environment:
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
       - TG_USER_ID=${TG_USER_ID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./backup_n8n.sh:/opt/n8n-install/backup_n8n.sh
+      - ./backups:/opt/n8n-install/backups
+      - ./.env:/opt/n8n-install/.env
     labels:
       - "traefik.enable=false"
 
