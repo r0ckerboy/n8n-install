@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-### Проверка прав
+# Проверка запуска от root
 if (( EUID != 0 )); then
   echo "❗ Скрипт должен быть запущен от root: sudo bash <(curl ...)"
   exit 1
@@ -11,7 +11,7 @@ clear
 echo "🌐 Установка n8n + Telegram-бота + резервное копирование"
 echo "--------------------------------------------------------"
 
-### 1. Ввод переменных
+# === Ввод данных ===
 read -p "🌐 Домен (например: n8n.example.com): " DOMAIN
 read -p "📧 Email для Let's Encrypt: " EMAIL
 read -p "🔐 Пароль для Postgres: " POSTGRES_PASSWORD
@@ -19,14 +19,14 @@ read -p "🗝️  Ключ шифрования n8n (Enter для генерац
 read -p "🤖 Telegram Bot Token: " TG_BOT_TOKEN
 read -p "👤 Telegram User ID (для уведомлений): " TG_USER_ID
 
-# Генерация ключа, если пустой
+# Генерация ключа
 if [ -z "$N8N_ENCRYPTION_KEY" ]; then
   N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
   echo "✅ Сгенерирован ключ: $N8N_ENCRYPTION_KEY"
 fi
 
-### 2. Установка Docker и Docker Compose
-echo "📦 Установка Docker..."
+# === Установка Docker и Docker Compose ===
+echo "📦 Устанавливаем Docker..."
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
@@ -37,13 +37,13 @@ if ! command -v docker compose &>/dev/null; then
   ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
 fi
 
-### 3. Загрузка проекта
-echo "📥 Клонируем репозиторий..."
+# === Клонирование репозитория ===
+echo "📥 Загружаем проект..."
 rm -rf /opt/n8n-install
 git clone https://github.com/kalininlive/n8n-beget-install.git /opt/n8n-install
 cd /opt/n8n-install
 
-### 4. Создание .env файлов
+# === Создание .env файлов ===
 echo "🧪 Создаём .env..."
 cat > ".env" <<EOF
 DOMAIN=$DOMAIN
@@ -60,24 +60,40 @@ TG_BOT_TOKEN=$TG_BOT_TOKEN
 TG_USER_ID=$TG_USER_ID
 EOF
 
-### 5. Сборка кастомного образа n8n
-echo "🔧 Собираем кастомный образ n8n..."
-docker build -f Dockerfile.n8n -t n8n-custom:latest .
+# === Создание директорий ===
+echo "📁 Создаём директории logs и backups..."
+mkdir -p logs backups
+chmod -R 755 logs backups
 
-### 6. Запуск docker-compose
+# === Сборка образов ===
+echo "🔧 Сборка Docker образов..."
+docker build -f Dockerfile.n8n -t n8n-custom:latest .
+docker compose build --no-cache
+
+# === Запуск сервисов ===
 echo "🚀 Запускаем docker-compose..."
 docker compose up -d
 
-### 7. Настройка cron-задачи
+# === Настройка cron ===
 echo "⏰ Устанавливаем cron для бэкапа в 02:00..."
 chmod +x ./backup_n8n.sh
-mkdir -p logs backups
-(crontab -l 2>/dev/null; echo "0 2 * * * /bin/bash /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/logs/backup.log 2>&1") | crontab -
 
-### 8. Уведомление в Telegram
-echo "📩 Отправляем сообщение в Telegram..."
-curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
-  -d chat_id=$TG_USER_ID \
-  -d text="✅ Установка n8n завершена. Открывайте: https://$DOMAIN"
+(crontab -l 2>/dev/null; echo "0 2 * * * /bin/bash /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/logs/backup.log 2>&1") | crontab - || echo "⚠️ Cron не установлен автоматически. Установите вручную через crontab -e"
 
-echo "🎉 Установка завершена! Перейдите на https://$DOMAIN"
+# === Финальный лог ===
+INSTALL_LOG="/opt/n8n-install/install.log"
+{
+  echo "✅ Установка завершена $(date)"
+  echo "🌍 Домен: $DOMAIN"
+  echo "📦 Контейнеры:"
+  docker ps --format "  - {{.Names}}: {{.Status}}"
+} > "$INSTALL_LOG"
+
+# === Telegram-уведомление ===
+echo "📩 Уведомление в Telegram..."
+curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendDocument \
+  -F chat_id=$TG_USER_ID \
+  -F document=@"$INSTALL_LOG" \
+  -F caption="✅ Установка завершена. Домен: https://$DOMAIN"
+
+echo "🎉 Установка завершена! Открывайте: https://$DOMAIN"
