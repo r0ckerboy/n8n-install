@@ -1,12 +1,16 @@
 {
-  "name": "n8n-admin-tg-bot",
+  "name": "n8n-admin-bot",
   "version": "1.0.0",
+  "description": "Telegram-бот для управления n8n: бэкап, обновление, статус, логи",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
-    "dotenv": "^16.3.1",
-    "node-telegram-bot-api": "^0.61.0"
-  }
+    "node-telegram-bot-api": "^0.61.0",
+    "dotenv": "^16.3.1"
+  },
+  "keywords": ["n8n", "telegram", "bot", "backup", "admin"],
+  "author": "kalininlive",
+  "license": "MIT"
 }
