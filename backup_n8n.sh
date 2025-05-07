@@ -1,52 +1,63 @@
 #!/bin/bash
 set -e
 
-# === Пути ===
-DATE=$(date +"%Y-%m-%d-%H-%M")
-DIR="/opt/n8n-install"
-BACKUP_DIR="$DIR/backups"
-N8N_CONTAINER="n8n-app"
-ZIP_NAME="n8n-backup-$DATE.zip"
-TMP_PATH="/tmp/$ZIP_NAME"
+# === Переменные и директории ===
+NOW=$(date +"%Y-%m-%d-%H-%M")
+BASE_DIR="/opt/n8n-install"
+ENV_FILE="$BASE_DIR/.env"
+WORKFLOWS_JSON="$BASE_DIR/n8n_workflows.json"
+CREDS_JSON="$BASE_DIR/n8n_credentials.json"
+ARCHIVE="$BASE_DIR/backups/n8n-backup-$NOW.zip"
+LOG_FILE="$BASE_DIR/logs/backup.log"
 
-# === Переменные из .env ===
-source "$DIR/.env"
-BOT_TOKEN="$TG_BOT_TOKEN"
-USER_ID="$TG_USER_ID"
+# === Загрузка переменных из .env ===
+if [ -f "$ENV_FILE" ]; then
+  source "$ENV_FILE"
+else
+  echo "❗ Файл .env не найден: $ENV_FILE" >> "$LOG_FILE"
+  exit 1
+fi
 
-# === Логи ===
-LOG_FILE="$DIR/logs/backup.log"
-mkdir -p "$DIR/logs"
-mkdir -p "$BACKUP_DIR"
+# === Проверка токенов ===
+if [ -z "$TG_BOT_TOKEN" ] || [ -z "$TG_USER_ID" ]; then
+  echo "❗ BOT_TOKEN или USER_ID не заданы в .env" >> "$LOG_FILE"
+  exit 1
+fi
 
-# === Логирование ===
-log() {
-  echo "[$(date +"%Y-%m-%d %H:%M:%S")] $*" | tee -a "$LOG_FILE"
-}
+# === Запуск ===
+echo "🔧 backup_n8n.sh запущен: $NOW" >> "$LOG_FILE"
 
-log "🚀 Запуск резервного копирования"
+# === Экспорт Workflows ===
+if docker exec n8n-app n8n export:workflow --all --output=/tmp/export.json; then
+  docker cp n8n-app:/tmp/export.json "$WORKFLOWS_JSON"
+  echo "✅ workflows экспортированы" >> "$LOG_FILE"
+else
+  curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+    -d chat_id="$TG_USER_ID" \
+    -d text="⚠️ Внимание: в n8n нет ни одного workflow. Бэкап отменён."
+  exit 1
+fi
 
-# === Получение файлов из контейнера ===
-log "📥 Экспортируем workflows и credentials"
-docker exec "$N8N_CONTAINER" n8n export:workflow --all --output=/data/workflows.json
-docker exec "$N8N_CONTAINER" n8n export:credentials --all --decrypted --output=/data/credentials.json
+# === Экспорт Credentials ===
+if docker exec n8n-app n8n export:credentials --all --output=/tmp/creds.json; then
+  docker cp n8n-app:/tmp/creds.json "$CREDS_JSON"
+  echo "✅ credentials экспортированы" >> "$LOG_FILE"
+else
+  echo "⚠️ Внимание: credentials отсутствуют, создаю пустой JSON" >> "$LOG_FILE"
+  echo '{}' > "$CREDS_JSON"
+  curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+    -d chat_id="$TG_USER_ID" \
+    -d text="⚠️ Внимание: в n8n нет ни одного credentials. Бэкап выполнен только для workflows."
+fi
 
-# === Копируем из volume на хост ===
-cp "$DIR/data/workflows.json" "$BACKUP_DIR/workflows-$DATE.json"
-cp "$DIR/data/credentials.json" "$BACKUP_DIR/credentials-$DATE.json"
+# === Архивация ===
+zip -j "$ARCHIVE" "$WORKFLOWS_JSON" "$CREDS_JSON" >> "$LOG_FILE" 2>&1
 
-# === Создание архива ===
-cd "$BACKUP_DIR"
-zip -q "$TMP_PATH" "workflows-$DATE.json" "credentials-$DATE.json"
+# === Отправка архива в Telegram ===
+curl -s -F document=@"$ARCHIVE" \
+  "https://api.telegram.org/bot$TG_BOT_TOKEN/sendDocument?chat_id=$TG_USER_ID&caption=Backup n8n ( $NOW )" >> "$LOG_FILE" 2>&1
 
-# === Очистка лишнего
-rm "workflows-$DATE.json" "credentials-$DATE.json"
+echo "✅ Архив отправлен в Telegram" >> "$LOG_FILE"
 
-# === Отправка в Telegram
-log "📤 Отправка архива в Telegram"
-curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" \
-  -F chat_id="$USER_ID" \
-  -F document=@"$TMP_PATH" \
-  -F caption="📦 Резервная копия n8n от $DATE"
-
-log "✅ Резервное копирование завершено"
+# === Очистка временных файлов ===
+rm -f "$WORKFLOWS_JSON" "$CREDS_JSON" "$ARCHIVE"
