@@ -1,35 +1,24 @@
-# Базовый образ n8n (на Alpine)
-FROM n8nio/n8n:latest
+FROM n8nio/n8n:1.91.2
 
-# Переключаемся на root
+# Установка системных зависимостей
 USER root
 
-# Установка системных зависимостей через apk
-RUN apk add --no-cache \
-  bash \
-  curl \
-  git \
-  make \
-  g++ \
-  gcc \
-  python3 \
-  py3-pip \
-  libffi-dev \
-  openssl-dev
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    ffmpeg \
+    curl \
+    unzip \
+    git \
+    zip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Установка pip-библиотек (Python)
-RUN for lib in \
-    openai \
-    numpy \
-    requests \
-    beautifulsoup4 \
-    lxml \
-    ; do \
-  echo "📦 pip install $lib" && pip install "$lib" || echo "⚠️ pip: $lib не встал, продолжаем..."; \
-done
+# Установка yt-dlp
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+  && chmod a+rx /usr/local/bin/yt-dlp
 
-# Установка npm-глобальных библиотек (Node.js)
-RUN for pkg in \
+# Установка глобальных npm-зависимостей
+RUN npm install -g \
     axios \
     node-fetch \
     form-data \
@@ -37,7 +26,6 @@ RUN for pkg in \
     date-fns \
     lodash \
     fs-extra \
-    path \
     csv-parser \
     xml2js \
     js-yaml \
@@ -54,11 +42,13 @@ RUN for pkg in \
     vk-io \
     whatsapp-web.js \
     fluent-ffmpeg \
-    ffmpeg-static \
-    yt-dlp-exec \
     google-tts-api \
     @vitalets/google-translate-token \
     node-wav \
+    lame \
+    googleapis \
+    @supabase/supabase-js \
+    pg \
     mongoose \
     ioredis \
     bcrypt \
@@ -69,10 +59,14 @@ RUN for pkg in \
     prom-client \
     node-downloader-helper \
     adm-zip \
-    archiver \
-    ; do \
-  echo "🔧 Устанавливаем $pkg..." && npm install -g "$pkg" || echo "⚠️ Не удалось установить $pkg, продолжаем..."; \
-done
+    archiver
 
-# Возвращаем пользователя n8n
+# Установка pip-зависимостей (по необходимости)
+RUN pip3 install --no-cache-dir \
+    requests \
+    openai \
+    google-api-python-client \
+    beautifulsoup4
+
+# Возврат прав к пользователю node
 USER node
