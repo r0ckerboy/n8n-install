@@ -22,8 +22,7 @@ RUN apk add --no-cache \
   autoconf \
   automake \
   libtool \
-  nasm \
-  libexecinfo-dev
+  nasm
 
 # Создание рабочей директории
 WORKDIR /app
@@ -31,11 +30,8 @@ WORKDIR /app
 # Установка n8n через npm
 RUN npm install -g n8n
 
-# Копируем кастомные модули, если есть
-# COPY .n8n /root/.n8n  # опционально
-
-# Открываем порт по умолчанию
+# Открываем порт
 EXPOSE 5678
 
-# Запускаем n8n
+# Запуск n8n
 CMD ["n8n"]
