@@ -3,14 +3,12 @@ const { execSync, exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-// === Загрузка переменных окружения ===
-require('dotenv').config();
-
+// === Переменные окружения ===
 const token = process.env.TG_BOT_TOKEN;
 const userId = process.env.TG_USER_ID;
 
 if (!token || !userId) {
-  console.error("❌ TG_BOT_TOKEN или TG_USER_ID не заданы в .env");
+  console.error("❌ Не заданы необходимые переменные окружения.");
   process.exit(1);
 }
 
@@ -24,76 +22,95 @@ function send(text) {
   bot.sendMessage(userId, text, { parse_mode: 'Markdown' });
 }
 
-// === /start — справка ===
+// /start — список команд
 bot.onText(/\/start/, (msg) => {
   if (!isAuthorized(msg)) return;
-  send(
-    '🤖 *Доступные команды:*\n' +
-    '/status — Статус контейнеров\n' +
-    '/logs — Логи n8n\n' +
-    '/backups — Резервная копия\n' +
-    '/update — Обновление n8n'
-  );
+  send('🤖 Доступные команды:\n/status — Статус контейнеров\n/logs — Логи n8n\n/backups — Бэкап вручную\n/update — Обновление n8n');
 });
 
-// === /status — аптайм и контейнеры ===
+// /status — аптайм и контейнеры
 bot.onText(/\/status/, (msg) => {
   if (!isAuthorized(msg)) return;
   try {
     const uptime = execSync('uptime -p').toString().trim();
     const containers = execSync('docker ps --format "{{.Names}} ({{.Status}})"').toString().trim();
-    send(`🟢 *Сервер работает*\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
-  } catch {
+    send(`🟢 Сервер работает\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
+  } catch (err) {
     send('❌ Ошибка при получении статуса');
   }
 });
 
-// === /logs — последние логи n8n ===
+// /logs — последние 50 строк логов n8n
 bot.onText(/\/logs/, (msg) => {
   if (!isAuthorized(msg)) return;
-  try {
-    const logs = execSync('docker logs --tail=50 n8n-app').toString();
-    send(`📝 *Логи n8n:*\n\`\`\`\n${logs}\n\`\`\``);
-  } catch {
-    send('❌ Не удалось получить логи n8n');
-  }
+
+  exec('docker logs --tail=100 n8n-app', (error, stdout, stderr) => {
+    if (error) {
+      send(`❌ Не удалось получить логи:\n\`\`\`\n${error.message}\n\`\`\``);
+      return;
+    }
+
+    if (stderr && stderr.trim()) {
+      send(`⚠️ Предупреждение при получении логов:\n\`\`\`\n${stderr}\n\`\`\``);
+      return;
+    }
+
+    const MAX_LEN = 3900;
+    const trimmed = stdout.length > MAX_LEN ? stdout.slice(-MAX_LEN) : stdout;
+
+    if (stdout.length > MAX_LEN) {
+      // Логи слишком длинные — сохраняем во временный файл и отправляем
+      const fs = require('fs');
+      const logPath = '/tmp/n8n_logs.txt';
+      fs.writeFileSync(logPath, stdout);
+
+      bot.sendDocument(userId, logPath, {}, {
+        caption: '📝 Логи n8n (последние 100 строк)'
+      });
+    } else {
+      send(`📝 Логи n8n:\n\`\`\`\n${trimmed}\n\`\`\``);
+    }
+  });
 });
 
-// === /backups — запуск backup_n8n.sh ===
+// /backups — запускает backup_n8n.sh
 bot.onText(/\/backups/, (msg) => {
   if (!isAuthorized(msg)) return;
 
-  send('📦 Запускаю резервное копирование...');
+  send('📦 Запускаю резервное копирование n8n...');
 
   const backupScriptPath = path.resolve('/opt/n8n-install/backup_n8n.sh');
 
   exec(`/bin/bash ${backupScriptPath}`, (error, stdout, stderr) => {
     if (error) {
-      send(`❌ Ошибка:\n\`\`\`\n${error.message}\n\`\`\``);
-      return;
-    }
-    if (stderr && stderr.trim()) {
-      send(`⚠️ Предупреждения:\n\`\`\`\n${stderr}\n\`\`\``);
+      send(`❌ Ошибка при запуске backup:\n\`\`\`\n${error.message}\n\`\`\``, { parse_mode: 'Markdown' });
       return;
     }
 
-    send(`✅ Бэкап завершён.`);
+    if (stderr && stderr.trim()) {
+      send(`⚠️ В процессе бэкапа были предупреждения:\n\`\`\`\n${stderr}\n\`\`\``, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    send('✅ Бэкап завершён. Проверьте Telegram — архив должен быть отправлен автоматически.');
   });
 });
 
-// === /update — обновление n8n после бэкапа ===
+// /update — сначала backup, потом обновление n8n
 bot.onText(/\/update/, (msg) => {
   if (!isAuthorized(msg)) return;
 
-  send('🔄 Сначала создаю бэкап...');
+  send('⏳ Сначала делаю резервную копию перед обновлением...');
 
   const backupScriptPath = path.resolve('/opt/n8n-install/backup_n8n.sh');
 
-  exec(`/bin/bash ${backupScriptPath}`, (error) => {
+  exec(`/bin/bash ${backupScriptPath}`, (error, stdout, stderr) => {
     if (error) {
-      send(`❌ Ошибка бэкапа:\n\`\`\`\n${error.message}\n\`\`\`\nОбновление прервано.`);
+      send(`❌ Ошибка при запуске backup:\n\`\`\`\n${error.message}\n\`\`\`\nОбновление прервано.`, { parse_mode: 'Markdown' });
       return;
     }
+
+    send('✅ Бэкап завершён. Начинаю обновление n8n...');
 
     try {
       const latest = execSync('npm view n8n version').toString().trim();
@@ -114,3 +131,4 @@ bot.onText(/\/update/, (msg) => {
     }
   });
 });
+

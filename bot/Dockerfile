@@ -1,26 +1,24 @@
 FROM node:20-alpine
 
-# Устанавливаем нужные пакеты для bash, curl и работы с Docker CLI
+# Устанавливаем нужные пакеты
 RUN apk add --no-cache \
+  zip \
   bash \
   curl \
   docker-cli \
   coreutils \
-  procps \
-  zip \
-  tzdata \
-  && cp /usr/share/zoneinfo/Europe/Moscow /etc/localtime \
-  && echo "Europe/Moscow" > /etc/timezone
+  procps
 
-# Устанавливаем рабочую директорию
+# Создаем рабочую директорию
 WORKDIR /app
 
-# Копируем зависимости и устанавливаем их
+# Копируем package.json и устанавливаем зависимости
 COPY package*.json ./
 RUN npm install
 
-# Копируем исходники
+# Копируем исходники бота
 COPY . .
 
 # Запускаем бота
 CMD ["node", "bot.js"]
+

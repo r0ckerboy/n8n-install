@@ -1,37 +1,79 @@
-FROM node:20-alpine
 
-# Установка системных пакетов и зависимостей
+# Базовый образ n8n (на Alpine)
+FROM n8nio/n8n:latest
+
+# Переключаемся на root
+USER root
+
+# Установка зависимостей через apk (Alpine)
 RUN apk add --no-cache \
   bash \
   curl \
-  ffmpeg \
+  git \
+  make \
+  g++ \
+  gcc \
   python3 \
   py3-pip \
-  git \
-  zip \
-  unzip \
-  libc6-compat \
-  vips-dev \
-  gcc \
-  g++ \
-  make \
   libffi-dev \
-  openssl-dev \
-  jpeg-dev \
-  zlib-dev \
-  autoconf \
-  automake \
-  libtool \
-  nasm
+  openssl-dev
 
-# Создание рабочей директории
-WORKDIR /app
+# Установка pip-библиотек по одной (с обработкой ошибок)
+RUN for lib in \
+    openai \
+    numpy \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    ; do \
+  echo "📦 pip install $lib" && pip install "$lib" || echo "⚠️ pip: $lib не встал, продолжаем..."; \
+done
 
-# Установка n8n через npm
-RUN npm install -g n8n
+# Установка npm-библиотек по одной (с обработкой ошибок)
+RUN for pkg in \
+    axios \
+    node-fetch \
+    form-data \
+    moment \
+    date-fns \
+    lodash \
+    fs-extra \
+    path \
+    csv-parser \
+    xml2js \
+    js-yaml \
+    xlsx \
+    jsonwebtoken \
+    simple-oauth2 \
+    uuid \
+    openai \
+    @tensorflow/tfjs-node \
+    langchain \
+    langchain-openai \
+    node-telegram-bot-api \
+    discord.js \
+    vk-io \
+    whatsapp-web.js \
+    fluent-ffmpeg \
+    ffmpeg-static \
+    yt-dlp-exec \
+    google-tts-api \
+    @vitalets/google-translate-token \
+    node-wav \
+    mongoose \
+    ioredis \
+    bcrypt \
+    validator \
+    joi \
+    winston \
+    dotenv \
+    prom-client \
+    node-downloader-helper \
+    adm-zip \
+    archiver \
+    ; do \
+  echo "🔧 Устанавливаем $pkg..." && npm install -g "$pkg" || echo "⚠️ Не удалось установить $pkg, продолжаем..."; \
+done
 
-# Открываем порт
-EXPOSE 5678
-
-# Запуск n8n
-CMD ["n8n"]
+# Возвращаем пользователя
+USER node
