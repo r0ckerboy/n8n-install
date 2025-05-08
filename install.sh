@@ -15,9 +15,9 @@ echo "----------------------------------------"
 read -p "🌐 Введите домен для n8n (например: n8n.example.com): " DOMAIN
 read -p "📧 Введите email для SSL-сертификата Let's Encrypt: " EMAIL
 read -p "🔐 Введите пароль для базы данных Postgres: " POSTGRES_PASSWORD
-read -p "🗝️  Введите ключ шифрования для n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
 read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
 read -p "👤 Введите Telegram User ID (для уведомлений): " TG_USER_ID
+read -p "🗝️  Введите ключ шифрования для n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
 
 if [ -z "$N8N_ENCRYPTION_KEY" ]; then
   N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
