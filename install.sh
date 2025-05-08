@@ -42,32 +42,46 @@ rm -rf /opt/n8n-install
 git clone https://github.com/kalininlive/n8n-beget-install.git /opt/n8n-install
 cd /opt/n8n-install
 
-### 4. Создание .env файлов
+### 4. Генерация .env файлов
 cat > ".env" <<EOF
 DOMAIN=$DOMAIN
 EMAIL=$EMAIL
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+TG_USER_ID=$TG_USER_ID
 EOF
 
 cat > "bot/.env" <<EOF
-BOT_TOKEN=$TG_BOT_TOKEN
-USER_ID=$TG_USER_ID
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+TG_USER_ID=$TG_USER_ID
 EOF
+
+chmod 600 .env bot/.env
+
+### 4.1 Создание нужных директорий и логов
+mkdir -p logs backups
+touch backup.log
+chown -R 1000:1000 logs backups backup.log
+chmod -R 755 logs backups
 
 ### 5. Сборка кастомного образа n8n
 docker build -f Dockerfile.n8n -t n8n-custom:latest .
 
-### 6. Запуск docker compose
+### 6. Запуск docker compose (включая Telegram-бота)
 docker compose up -d
 
 ### 7. Настройка cron
 chmod +x ./backup_n8n.sh
-(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
 
 ### 8. Уведомление в Telegram
 curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
   -d chat_id=$TG_USER_ID \
   -d text="✅ Установка n8n завершена. Домен: https://$DOMAIN"
+
+### 9. Финальный вывод
+echo "📦 Активные контейнеры:"
+docker ps --format "table {{.Names}}\t{{.Status}}"
 
 echo "🎉 Готово! Открой: https://$DOMAIN"
