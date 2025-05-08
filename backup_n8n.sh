@@ -1,5 +1,4 @@
 #!/bin/sh
-mkdir -p /opt/n8n-install/logs
 exec > /opt/n8n-install/backups/debug.log 2>&1
 echo "🟡 backup_n8n.sh начался: $(date)"
 set -e
