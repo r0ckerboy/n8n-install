@@ -62,4 +62,3 @@ curl -s -F "document=@$ARCHIVE_PATH" \
 
 # === Очистка временных файлов ===
 rm -f "$EXPORT_WORKFLOWS" "$EXPORT_CREDS" "$ARCHIVE_PATH"
-
