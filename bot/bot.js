@@ -121,9 +121,9 @@ bot.onText(/\/update/, (msg) => {
       } else {
         send(`⏬ Обновляю n8n с ${current} до ${latest}...`);
         execSync('docker pull n8nio/n8n');
-        execSync('docker compose stop n8n');
-        execSync('docker compose rm -f n8n');
-        execSync('docker compose up -d --no-deps --build n8n');
+        execSync('docker-compose stop n8n');
+        execSync('docker-compose rm -f n8n');
+        execSync('docker-compose up -d --no-deps --build n8n');
         send(`✅ n8n обновлён до версии ${latest}`);
       }
     } catch (err) {
