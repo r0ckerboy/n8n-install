@@ -40,28 +40,7 @@ services:
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
       - "traefik.http.middlewares.n8n-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
       - "traefik.http.middlewares.n8n-headers.headers.customrequestheaders.X-Forwarded-For=true"
-      - "traefik.http.routers.n8n.middlewares=n8n-headers"  # Исправлено!
-
-  n8n-traefik:
-    image: traefik:2.10.4
-    container_name: n8n-traefik
-    restart: always
-    command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
-      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
-      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
-      - "--providers.docker.exposedbydefault=false"          # Добавлено!
-      - "--providers.docker.network=n8n-install_default"     # Добавлено!
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik_letsencrypt:/letsencrypt
+      - "traefik.http.routers.n8n.middlewares=n8n-headers"
 
   n8n-postgres:
     image: postgres:15-alpine
@@ -81,6 +60,7 @@ services:
     volumes:
       - redis_data:/data
 
+  # Единственный блок n8n-traefik с исправлениями
   n8n-traefik:
     image: traefik:2.10.4
     container_name: n8n-traefik
@@ -93,6 +73,8 @@ services:
       - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
       - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
       - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+      - "--providers.docker.exposedbydefault=false"  # Отключаем автоматическое обнаружение сервисов
+      - "--providers.docker.network=n8n-install_default"  # Указываем сеть
     ports:
       - "80:80"
       - "443:443"
