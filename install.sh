@@ -30,6 +30,11 @@ if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
 
+echo "📦 Проверка NPM..."
+if ! command -v npm &>/dev/null; then
+  apt update && apt install -y npm
+fi
+
 if ! command -v docker compose &>/dev/null; then
   curl -SL https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
   chmod +x /usr/local/bin/docker-compose
