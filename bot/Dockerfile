@@ -1,23 +1,11 @@
-FROM node:20-alpine
+FROM node:18-alpine
 
-# Устанавливаем нужные пакеты
-RUN apk add --no-cache \
-  zip \
-  bash \
-  curl \
-  docker-cli \
-  coreutils \
-  procps
-
-# Создаем рабочую директорию
 WORKDIR /app
-
-# Копируем package.json и устанавливаем зависимости
 COPY package*.json ./
 RUN npm install
-
-# Копируем исходники бота
 COPY . .
 
-# Запускаем бота
+# Установка Docker CLI
+RUN apk add --no-cache docker-cli
+
 CMD ["node", "bot.js"]
