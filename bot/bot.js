@@ -21,44 +21,54 @@ function isAuthorized(msg) {
 function send(text) {
   bot.sendMessage(userId, text, { parse_mode: 'Markdown' });
 }
-
+// Проверка при старте бота
+try {
+  dockerCommand('ps');
+  send('🤖 Бот запущен и подключен к Docker');
+} catch (err) {
+  send(`❌ Ошибка подключения к Docker: ${err.message}`);
+  process.exit(1);
+}
 // /start — список команд
 bot.onText(/\/start/, (msg) => {
   if (!isAuthorized(msg)) return;
   send('🤖 Доступные команды:\n/status — Статус контейнеров\n/logs — Логи n8n\n/backups — Бэкап вручную\n/update — Обновление n8n');
 });
 
-// /status — аптайм и контейнеры
+const bot = new TelegramBot(token, { polling: true });
+
+// Добавляем обработку ошибок Docker
+function dockerCommand(cmd) {
+  try {
+    return execSync(`docker ${cmd}`, { timeout: 10000 }).toString().trim();
+  } catch (err) {
+    console.error(`Docker error: ${err.message}`);
+    throw new Error(`Docker command failed: ${cmd}`);
+  }
+}
+
+// Обновленный /status
 bot.onText(/\/status/, (msg) => {
   if (!isAuthorized(msg)) return;
   try {
     const uptime = execSync('uptime -p').toString().trim();
-    const containers = execSync('docker ps --format "{{.Names}} ({{.Status}})"').toString().trim();
+    const containers = dockerCommand('ps --format "{{.Names}} ({{.Status}})"');
     send(`🟢 Сервер работает\n⏱ Uptime: ${uptime}\n\n📦 Контейнеры:\n${containers}`);
   } catch (err) {
-    send('❌ Ошибка при получении статуса');
+    send(`❌ Ошибка Docker: ${err.message}\nПроверьте: sudo systemctl status docker`);
   }
 });
 
-// /logs — последние 50 строк логов n8n
+// Обновленный /logs
 bot.onText(/\/logs/, (msg) => {
   if (!isAuthorized(msg)) return;
-
-  exec('docker logs --tail=100 n8n-app', (error, stdout, stderr) => {
-    if (error) {
-      send(`❌ Не удалось получить логи:\n\`\`\`\n${error.message}\n\`\`\``);
-      return;
-    }
-
-    if (stderr && stderr.trim()) {
-      send(`⚠️ Предупреждение при получении логов:\n\`\`\`\n${stderr}\n\`\`\``);
-      return;
-    }
-
-    const MAX_LEN = 3900;
-    const trimmed = stdout.length > MAX_LEN ? stdout.slice(-MAX_LEN) : stdout;
-
-    if (stdout.length > MAX_LEN) {
+  try {
+    const logs = dockerCommand('logs --tail=100 n8n');
+    send(`📝 Логи n8n:\n\`\`\`\n${logs.slice(-3900)}\n\`\`\``);
+  } catch (err) {
+    send(`❌ Не удалось получить логи: ${err.message}`);
+  }
+});
       // Логи слишком длинные — сохраняем во временный файл и отправляем
       const fs = require('fs');
       const logPath = '/tmp/n8n_logs.txt';
@@ -95,6 +105,9 @@ bot.onText(/\/backups/, (msg) => {
     send('✅ Бэкап завершён. Проверьте Telegram — архив должен быть отправлен автоматически.');
   });
 });
+bot.onText(/\/update/, (msg) => {
+  if (!isAuthorized(msg)) return;
+  
 
 // /update — сначала backup, потом обновление n8n
 bot.onText(/\/update/, (msg) => {
