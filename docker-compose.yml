@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   n8n:
     build:
@@ -59,7 +57,18 @@ services:
     restart: always
     volumes:
       - redis_data:/data
-
+bot:
+  build: ./bot
+  restart: unless-stopped
+  environment:
+    - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+    - TG_USER_ID=${TG_USER_ID}
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+    - ${INSTALL_DIR}:${INSTALL_DIR}
+  depends_on:
+    - n8n
+    
   # Единственный блок n8n-traefik с исправлениями
   n8n-traefik:
     image: traefik:2.10.4
