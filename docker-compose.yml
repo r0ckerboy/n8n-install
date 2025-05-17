@@ -6,7 +6,7 @@ services:
     container_name: n8n-app
     restart: always
     expose:
-      - "5678"  # Только для внутреннего доступа
+      - "5678"
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=n8n-postgres
@@ -34,15 +34,6 @@ services:
       - n8n-postgres
     networks:
       - n8n-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`${DOMAIN}`)"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls=true"
-      - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-      - "traefik.http.middlewares.n8n-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.routers.n8n.middlewares=n8n-https-redirect"
 
   n8n-postgres:
     image: postgres:15-alpine
@@ -73,14 +64,14 @@ services:
     command:
       - "--api.insecure=true"
       - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=n8n-network"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=n8n-network"
     ports:
       - "80:80"
       - "443:443"
@@ -90,11 +81,11 @@ services:
     networks:
       - n8n-network
 
-  n8n-bot:
+  n8n-tg-bot:  # Изменено с bot на n8n-tg-bot
     build:
-      context: ./bot
-      dockerfile: Dockerfile
-    container_name: n8n-bot
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: n8n-tg-bot
     restart: always
     environment:
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
@@ -107,8 +98,8 @@ services:
       - ./.env:/opt/n8n-install/.env
     networks:
       - n8n-network
-    labels:
-      - "traefik.enable=false"
+    depends_on:
+      - n8n-app
 
 volumes:
   n8n_data:
