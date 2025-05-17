@@ -50,7 +50,7 @@ fi
 ### 3. Клонирование проекта с GitHub
 echo "📥 Клонируем проект с GitHub..."
 rm -rf /opt/n8n-install
-git clone https://github.com/kalininlive/n8n-beget-install.git /opt/n8n-install
+git clone https://github.com/r0ckerboy/n8n-beget-install.git /opt/n8n-install
 cd /opt/n8n-install
 
 ### 4. Генерация .env файлов
@@ -60,8 +60,13 @@ EMAIL=$EMAIL
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
 N8N_EXPRESS_TRUST_PROXY=true
+N8N_HOST=$DOMAIN
+N8N_PROTOCOL=https
+WEBHOOK_URL=https://$DOMAIN/
 TG_BOT_TOKEN=$TG_BOT_TOKEN
 TG_USER_ID=$TG_USER_ID
+POSTGRES_USER=n8n
+POSTGRES_DB=n8n
 EOF
 
 cat > "bot/.env" <<EOF
@@ -75,7 +80,7 @@ chmod 600 .env bot/.env
 mkdir -p logs backups traefik/acme
 touch backup.log
 chown -R 1000:1000 logs backups backup.log
-chmod -R 755 logs backups
+chmod -R 755 logs backups traefik/acme
 
 ### 4.2 Настройка Traefik для боевого режима
 cat > "traefik/traefik.yml" <<EOF
@@ -85,6 +90,11 @@ global:
 entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
   websecure:
     address: ":443"
 
@@ -103,6 +113,24 @@ providers:
 
 log:
   level: DEBUG
+EOF
+
+cat > "traefik/dynamic_conf.yml" <<EOF
+http:
+  routers:
+    n8n:
+      rule: "Host(\`$DOMAIN\`)"
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+      service: n8n
+
+  services:
+    n8n:
+      loadBalancer:
+        servers:
+          - url: "http://n8n-app:5678"
 EOF
 
 ### 5. Сборка кастомного образа n8n
