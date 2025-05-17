@@ -1,64 +1,115 @@
-#!/bin/sh
-exec > /opt/n8n-install/backups/debug.log 2>&1
-echo "🟡 backup_n8n.sh начался: $(date)"
-set -e
-set -x
+#!/bin/bash
+set -euo pipefail
+
+# === Настройка логов ===
+LOG_FILE="/opt/n8n-install/backups/debug.log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+echo "🟡 backup_n8n.sh начался: $(date '+%Y-%m-%d %H:%M:%S')"
 
 # === Конфигурация ===
 BACKUP_DIR="/opt/n8n-install/backups"
 mkdir -p "$BACKUP_DIR"
-NOW=$(date +"%Y-%m-%d-%H-%M")
+NOW=$(date +"%Y-%m-%d_%H-%M-%S")
 ARCHIVE_NAME="n8n-backup-$NOW.zip"
 ARCHIVE_PATH="$BACKUP_DIR/$ARCHIVE_NAME"
+TEMP_DIR=$(mktemp -d)
 BASE_DIR="/opt/n8n-install"
 ENV_FILE="$BASE_DIR/.env"
-EXPORT_WORKFLOWS="$BASE_DIR/n8n_workflows.json"
-EXPORT_CREDS="$BASE_DIR/n8n_credentials.json"
 
-# === Загрузка переменных окружения ===
-. "$ENV_FILE"
-BOT_TOKEN="$TG_BOT_TOKEN"
-USER_ID="$TG_USER_ID"
-
-# === Сообщение, уведомление в TG ===
-send_telegram() {
-  curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
-    -d chat_id="$USER_ID" \
-    -d text="$1"
+# === Проверка зависимостей ===
+check_dependencies() {
+  for cmd in docker zip curl jq; do
+    if ! command -v "$cmd" &>/dev/null; then
+      echo "❌ Ошибка: команда $cmd не найдена"
+      exit 1
+    fi
+  done
 }
 
-# === Отладка запуска ===
-echo "🔧 backup_n8n.sh запущен: $NOW" >> "$BACKUP_DIR/debug.log"
+# === Загрузка переменных окружения ===
+load_env() {
+  if [ -f "$ENV_FILE" ]; then
+    source "$ENV_FILE"
+  else
+    echo "❌ Файл .env не найден"
+    exit 1
+  fi
+}
 
-# === Экспорт Workflows ===
-docker exec n8n-app n8n export:workflow --all --output=/tmp/export.json || true
+# === Отправка уведомления в Telegram ===
+send_telegram() {
+  local message="$1"
+  local file="$2"
+  
+  if [ -z "$file" ]; then
+    curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage" \
+      -d chat_id="$TG_USER_ID" \
+      -d text="$message"
+  else
+    curl -s -X POST "https://api.telegram.org/bot$TG_BOT_TOKEN/sendDocument" \
+      -F chat_id="$TG_USER_ID" \
+      -F document=@"$file" \
+      -F caption="$message"
+  fi
+}
 
-if docker cp n8n-app:/tmp/export.json "$EXPORT_WORKFLOWS"; then
-  echo "✅ workflows экспортированы"
-else
-  echo "⚠️ Внимание: workflow не найдены"
-  send_telegram "⚠️ Внимание: в n8n нет ни одного workflow. Бэкап отменён."
-  exit 1
-fi
+# === Экспорт данных из n8n ===
+export_data() {
+  local type=$1
+  local output_file=$2
+  
+  echo "🔧 Экспорт $type..."
+  if docker exec n8n-app n8n export:$type --all --output="/tmp/n8n_$type.json"; then
+    if docker cp "n8n-app:/tmp/n8n_$type.json" "$output_file"; then
+      echo "✅ $type успешно экспортированы"
+      return 0
+    fi
+  fi
+  
+  echo "⚠️ Не удалось экспортировать $type"
+  return 1
+}
 
-# === Экспорт Credentials ===
-docker exec n8n-app n8n export:credentials --all --output=/tmp/creds.json || true
+# === Основной процесс ===
+main() {
+  check_dependencies
+  load_env
 
-if docker cp n8n-app:/tmp/creds.json "$EXPORT_CREDS"; then
-  echo "✅ credentials экспортированы"
-else
-  echo "⚠️ Внимание: credentials отсутствуют, создаю пустой JSON"
-  echo '{}' > "$EXPORT_CREDS"
-  send_telegram "⚠️ Внимание: в n8n нет ни одного credentials. Бэкап выполнен только для workflows."
-fi
+  # Экспорт workflows
+  if ! export_data "workflow" "$TEMP_DIR/workflows.json"; then
+    send_telegram "❌ Ошибка: не удалось экспортировать workflows. Бэкап прерван."
+    exit 1
+  fi
 
-# === Создание архива без пароля ===
-zip -j "$ARCHIVE_PATH" "$EXPORT_WORKFLOWS" "$EXPORT_CREDS"
+  # Экспорт credentials (опционально)
+  if ! export_data "credentials" "$TEMP_DIR/credentials.json"; then
+    echo "⚠️ Создаю пустой файл credentials"
+    echo '{}' > "$TEMP_DIR/credentials.json"
+  fi
 
-# === Отправка архива в Telegram ===
-curl -s -F "document=@$ARCHIVE_PATH" \
-  "https://api.telegram.org/bot$BOT_TOKEN/sendDocument?chat_id=$USER_ID&caption=Backup%20n8n%20(%20$NOW%20)" \
-  && echo "✅ Архив отправлен в Telegram" >> "$BACKUP_DIR/debug.log"
+  # Бэкап PostgreSQL
+  echo "🔧 Создание дампа PostgreSQL..."
+  if docker exec n8n-postgres pg_dump -U n8n -d n8n > "$TEMP_DIR/postgres.sql"; then
+    echo "✅ Дамп PostgreSQL создан"
+  else
+    echo "⚠️ Не удалось создать дамп PostgreSQL"
+  fi
 
-# === Очистка временных файлов ===
-rm -f "$EXPORT_WORKFLOWS" "$EXPORT_CREDS" "$ARCHIVE_PATH"
+  # Создание архива
+  echo "📦 Создание архива..."
+  if zip -jrq "$ARCHIVE_PATH" "$TEMP_DIR"/*; then
+    echo "✅ Архив создан: $ARCHIVE_PATH"
+    send_telegram "✅ Бэкап n8n успешно завершен ($NOW)" "$ARCHIVE_PATH"
+  else
+    echo "❌ Ошибка при создании архива"
+    send_telegram "❌ Ошибка при создании архива бэкапа"
+    exit 1
+  fi
+
+  # Очистка
+  rm -rf "$TEMP_DIR"
+  find "$BACKUP_DIR" -name "n8n-backup-*.zip" -mtime +7 -delete
+  echo "🟢 Бэкап успешно завершен: $(date '+%Y-%m-%d %H:%M:%S')"
+}
+
+main
