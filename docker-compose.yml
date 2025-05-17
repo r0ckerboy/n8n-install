@@ -81,24 +81,22 @@ services:
     networks:
       - n8n-network
 
-  services:
   n8n-tg-bot:
     build:
-      context: ./n8n-tg-bot  # Указываем папку с Dockerfile
-      dockerfile: Dockerfile  # Теперь используем стандартное имя файла
+      context: ./n8n-tg-bot
+      dockerfile: Dockerfile
     container_name: n8n-tg-bot
     restart: always
     environment:
       - TG_BOT_TOKEN=${TG_BOT_TOKEN}
       - TG_USER_ID=${TG_USER_ID}
+      - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./backups:/opt/n8n-install/backups
       - ./.env:/opt/n8n-install/.env
     networks:
       - n8n-network
-    depends_on:
-      - n8n-app
 
 volumes:
   n8n_data:
