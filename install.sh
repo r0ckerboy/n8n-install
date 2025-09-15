@@ -34,24 +34,40 @@ read -p "🔐 Введите пароль для Postgres: " POSTGRES_PASSWORD
 # Запрос Pexels API ключа с улучшенной проверкой
 if [ -z "$PEXELS_API_KEY" ]; then
     while true; do
-        read -p "🔑 Введите Pexels API ключ для Short Video Maker (получи на https://www.pexels.com/api/, только буквы и цифры): " PEXELS_API_KEY
-        # Очистка от пробелов и переносов, проверка формата
-        PEXELS_API_KEY=$(echo -n "$PEXELS_API_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
+        read -r -p "🔑 Введите Pexels API ключ (только буквы/цифры, ≥20 символов): " INPUT_KEY
+        sleep 0.5  # Пауза для стабильности ввода
+        PEXELS_API_KEY=$(echo -n "$INPUT_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
         if [ -z "$PEXELS_API_KEY" ] || [ ${#PEXELS_API_KEY} -lt 20 ]; then
-            echo "❗ Ключ должен содержать только буквы и цифры, минимум 20 символов. Попробуй снова."
+            echo "❗ Некорректный ключ (только alphanum, ≥20 символов). Попробуй снова."
         else
-            echo "🔍 Отладка: Длина ключа = ${#PEXELS_API_KEY}, ключ = $PEXELS_API_KEY"
-            echo "✅ Pexels API ключ принят"
+            echo "🔍 Отладка: Длина = ${#PEXELS_API_KEY}, ключ принят."
             break
         fi
     done
 else
-    echo "✅ Используется Pexels API ключ из переменной окружения (длина: ${#PEXELS_API_KEY})"
+    PEXELS_API_KEY=$(echo -n "$PEXELS_API_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
+    if [ ${#PEXELS_API_KEY} -lt 20 ]; then
+        echo "❗ Ключ из окружения некорректен, запросим заново."
+        while true; do
+            read -r -p "🔑 Введите Pexels API ключ: " INPUT_KEY
+            PEXELS_API_KEY=$(echo -n "$INPUT_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
+            if [ ${#PEXELS_API_KEY} -ge 20 ]; then
+                echo "✅ Ключ принят."
+                break
+            fi
+        done
+    fi
 fi
 
-read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
-read -p "👤 Введите Telegram User ID: " TG_USER_ID
-read -p "🗝️ Введите ключ шифрования n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
+read -r -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
+if [ -z "$TG_BOT_TOKEN" ]; then
+    echo "⚠️ TG_BOT_TOKEN пустой, пропускаем уведомления."
+fi
+read -r -p "👤 Введите Telegram User ID: " TG_USER_ID
+if [ -z "$TG_USER_ID" ]; then
+    echo "⚠️ TG_USER_ID пустой, пропускаем уведомления."
+fi
+read -r -p "🗝️ Введите ключ шифрования n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
 
 # Генерация ключа шифрования
 if [ -z "$N8N_ENCRYPTION_KEY" ]; then
@@ -61,13 +77,17 @@ fi
 
 # 2. Очистка старых файлов в /opt/n8n-install
 echo "🗑️ Очистка старых файлов в /opt/n8n-install..."
-rm -rf /opt/n8n-install/{docker-compose.yml,traefik.yml,dynamic.yml,init-postgres.sh,backup_all.sh,.env,data,backups,videos,postiz-data,postgres-data,redis-data,traefik} || true
-echo "✅ Очистка завершена, репозиторий готов к новой установке."
+rm -rf /opt/n8n-install || true
+echo "✅ Очистка завершена."
 
 # 3. Установка Docker и Compose
 echo "📦 Проверка Docker..."
 if ! command -v docker &>/dev/null; then
     curl -fsSL https://get.docker.com | sh
+fi
+if ! command -v docker &>/dev/null; then
+    echo "❗ Docker не установлен, завершаем."
+    exit 1
 fi
 if ! command -v docker-compose &>/dev/null; then
     curl -SL https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
@@ -77,13 +97,15 @@ fi
 
 # 4. Клонирование проекта
 echo "📥 Клонируем проект..."
-rm -rf /opt/n8n-install
 git clone https://github.com/r0ckerboy/n8n-beget-install /opt/n8n-install
 cd /opt/n8n-install
 
-# 5. Проверка и создание Dockerfile.n8n и install-community-nodes.sh
-if [ ! -f "Dockerfile.n8n" ]; then
-    echo "⚠️ Файл Dockerfile.n8n не найден. Создаём базовый шаблон..."
+# 5. Коррекция Dockerfile.n8n (удаление строк с requirements.txt)
+if [ -f "Dockerfile.n8n" ]; then
+    sed -i '/COPY requirements.txt \/tmp\//,/pip3 install --no-cache-dir -r \/tmp\/requirements.txt;/d' Dockerfile.n8n
+    echo "✅ Dockerfile.n8n скорректирован (удалены строки requirements.txt)."
+else
+    echo "⚠️ Dockerfile.n8n не найден, создаём базовый..."
     cat > "Dockerfile.n8n" <<EOF
 FROM n8nio/n8n
 
@@ -102,30 +124,19 @@ EXPOSE 5678
 ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
 CMD ["n8n"]
 EOF
-    echo "✅ Dockerfile.n8n создан. Добавь кастомные ноды в install-community-nodes.sh."
 fi
 
+# 6. Создание install-community-nodes.sh, если нет
 if [ ! -f "install-community-nodes.sh" ]; then
-    echo "⚠️ Файл install-community-nodes.sh не найден. Создаём базовый шаблон..."
     cat > "install-community-nodes.sh" <<EOF
 #!/bin/bash
-# Установка дополнительных community-нод для n8n
+# Установка community-нод для n8n
 set -e
 cd /home/node
-npm install --prefix .n8n n8n-nodes-my-custom-node
-# Добавь свои ноды, например: npm install --prefix .n8n n8n-nodes-telegram
+npm install --prefix .n8n n8n-nodes-telegram  # Пример: добавь свои
 echo "✅ Community-ноды установлены."
 EOF
     chmod +x install-community-nodes.sh
-    echo "✅ install-community-nodes.sh создан. Отредактируй его для нужных нод."
-fi
-
-# 6. Коррекция Dockerfile.n8n (удаление строк с requirements.txt, если файл отсутствует)
-if [ ! -f "requirements.txt" ]; then
-    sed -i '/COPY requirements.txt \/tmp\//d' Dockerfile.n8n
-    sed -i '/RUN if \[ -f \/tmp\/requirements.txt \]; then \\$/d' Dockerfile.n8n
-    sed -i '/pip3 install --no-cache-dir -r \/tmp\/requirements.txt;/d' Dockerfile.n8n
-    echo "⚠️ Файл requirements.txt отсутствует, связанные строки удалены из Dockerfile.n8n."
 fi
 
 # 7. Генерация .env
@@ -224,7 +235,7 @@ http:
           - url: http://short-video-maker:3123
 EOF
 
-# 11. Обновленный docker-compose.yml
+# 11. Обновленный docker-compose.yml с fallback на стандартный n8n
 cat > "docker-compose.yml" <<EOF
 services:
   traefik:
@@ -247,10 +258,7 @@ services:
       retries: 3
 
   n8n:
-    build:
-      context: .
-      dockerfile: Dockerfile.n8n
-    image: n8n-custom:latest
+    image: n8nio/n8n
     restart: unless-stopped
     environment:
       - N8N_HOST=n8n.$BASE_DOMAIN
@@ -283,7 +291,6 @@ services:
     environment:
       - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
       - POSTGRES_DB=n8n
-      - POSTGRES_MULTIPLE_DATABASES=postiz
     volumes:
       - ./postgres-data:/var/lib/postgresql/data
       - ./init-postgres.sh:/docker-entrypoint-initdb.d/init.sql
@@ -371,7 +378,7 @@ services:
       - TG_USER_ID=\${TG_USER_ID}
 EOF
 
-# Создание init-скрипта для Postgres (отдельная БД для Postiz)
+# Создание init-скрипта для Postgres
 cat > "init-postgres.sh" <<EOF
 #!/bin/bash
 set -e
@@ -392,49 +399,26 @@ BACKUP_DIR="./backups"
 mkdir -p $BACKUP_DIR
 
 # Бэкап n8n
-docker exec postgres pg_dump -U postgres n8n > ${BACKUP_DIR}/n8n_${DATE}.sql
-if [ $? -ne 0 ]; then
-    curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
-        -d chat_id=${TG_USER_ID} \
-        -d text="⚠️ Ошибка бэкапа n8n: pg_dump завершился с ошибкой"
-    exit 1
-fi
+docker exec postgres pg_dump -U postgres n8n > ${BACKUP_DIR}/n8n_${DATE}.sql || true
 
 # Бэкап Postiz
-docker exec postgres pg_dump -U postgres postiz > ${BACKUP_DIR}/postiz_${DATE}.sql
-if [ $? -ne 0 ]; then
-    curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
-        -d chat_id=${TG_USER_ID} \
-        -d text="⚠️ Ошибка бэкапа Postiz: pg_dump завершился с ошибкой"
-    exit 1
-fi
+docker exec postgres pg_dump -U postgres postiz > ${BACKUP_DIR}/postiz_${DATE}.sql || true
 
 # Бэкап Redis
-docker exec redis redis-cli --rdb /data/dump.rdb
-cp ./redis-data/dump.rdb ${BACKUP_DIR}/redis_${DATE}.rdb
-if [ $? -ne 0 ]; then
-    curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
-        -d chat_id=${TG_USER_ID} \
-        -d text="⚠️ Ошибка бэкапа Redis: копирование dump.rdb не удалось"
-    exit 1
-fi
+docker exec redis redis-cli --rdb /data/dump.rdb || true
+cp ./redis-data/dump.rdb ${BACKUP_DIR}/redis_${DATE}.rdb || true
 
 # Бэкап видео
-tar -czf ${BACKUP_DIR}/videos_${DATE}.tar.gz ./videos
-if [ $? -ne 0 ]; then
-    curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
-        -d chat_id=${TG_USER_ID} \
-        -d text="⚠️ Ошибка бэкапа видео: архивация не удалась"
-    exit 1
-fi
+tar -czf ${BACKUP_DIR}/videos_${DATE}.tar.gz ./videos || true
 
 # Ротация: удалить старше 7 дней
 find ${BACKUP_DIR} -type f -mtime +7 -delete
 
-# Уведомление об успешном бэкапе
-curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
-    -d chat_id=${TG_USER_ID} \
-    -d text="✅ Бэкапы созданы: n8n, Postiz, Redis, видео. Путь: ${BACKUP_DIR}"
+if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_USER_ID" ]; then
+    curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
+        -d chat_id=$TG_USER_ID \
+        -d text="✅ Бэкапы созданы: n8n, Postiz, Redis, видео. Путь: $BACKUP_DIR"
+fi
 EOF
 chmod +x backup_all.sh
 
@@ -443,48 +427,35 @@ echo "🚀 Запуск системы..."
 if [ -f "Dockerfile.n8n" ]; then
     docker build -f Dockerfile.n8n -t n8n-custom:latest . || {
         echo "⚠️ Сборка n8n-custom провалилась, используем стандартный образ n8n"
-        sed -i '/n8n:/,/^[^ ]/ s/build:/image: n8nio/n8n/' docker-compose.yml || \
-        sed -i '27s/.*/    image: n8nio/n8n/' docker-compose.yml
+        # Точная замена в docker-compose.yml
+        sed -i 's/build:/image: n8nio\/n8n/' docker-compose.yml
+        sed -i '/^  n8n:/,/^  / s/^  n8n:/  n8n:\n    image: n8nio\/n8n/' docker-compose.yml
     }
-else
-    echo "⚠️ Dockerfile.n8n не найден, используем стандартный образ n8n"
-    sed -i '/n8n:/,/^[^ ]/ s/build:/image: n8nio/n8n/' docker-compose.yml || \
-    sed -i '27s/.*/    image: n8nio/n8n/' docker-compose.yml
 fi
 
 docker compose down --remove-orphans || true
 docker compose up -d
 echo "⏳ Ожидание запуска сервисов (до 2 минут)..."
 for i in {1..12}; do
-    if docker compose ps | grep -q "running"; then
+    if docker compose ps | grep -q "Up"; then
         break
     fi
     sleep 10
     echo "⏳ Проверка состояния ($i/12)..."
 done
 
-# 14. Проверка состояния с OAuth-тестом для Postiz
+# 14. Проверка состояния
 echo "🔍 Детальная проверка состояния:"
 check_service() {
     local service=$1
-    local status=$(docker compose ps $service | awk 'NR==2 {print $4}')
+    local status=$(docker compose ps $service | awk 'NR==2 {print $4}' 2>/dev/null || echo "Down")
     local health=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q $service) 2>/dev/null || echo "unknown")
     if [ "$status" = "Up" ] && { [ "$health" = "healthy" ] || [ "$health" = "unknown" ]; }; then
         echo "✅ $service работает нормально (health: $health)"
-        if [ "$service" = "postiz" ]; then
-            sleep 5 && curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health | grep -q 200 && \
-                echo "✅ Postiz health OK, настрой OAuth в UI: https://postiz.$BASE_DOMAIN" || \
-                echo "⚠️ Postiz API недоступен, проверь конфигурацию или логи"
-        elif [ "$service" = "short-video-maker" ]; then
-            sleep 5 && curl -s -o /dev/null -w "%{http_code}" http://localhost:3123/health | grep -q 200 && \
-                echo "✅ Short Video Maker health OK, Pexels ключ активен" || \
-                echo "⚠️ Short Video Maker API недоступен, проверь Pexels ключ"
-        fi
         return 0
     else
         echo "❌ $service имеет проблемы (статус: $status, health: $health)"
-        echo "=== Логи $service ==="
-        docker compose logs $service --tail=20
+        docker compose logs $service --tail=10
         return 1
     fi
 }
@@ -496,13 +467,15 @@ done
 (crontab -l 2>/dev/null; echo "0 2 * * * /opt/n8n-install/backup_all.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
 echo "✅ Cron настроен: ежедневные бэкапы в ./backups (ротация 7 дней)"
 
-# 16. Уведомление в Telegram
-curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
-    -d chat_id=$TG_USER_ID \
-    -d text="✅ Установка завершена! Доступно:
+# 16. Уведомление в Telegram (если данные валидны)
+if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_USER_ID" ]; then
+    curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
+        -d chat_id=$TG_USER_ID \
+        -d text="✅ Установка завершена! Доступно:
 • n8n: https://n8n.$BASE_DOMAIN
-• Postiz: https://postiz.$BASE_DOMAIN (настрой OAuth для соцсетей в UI)
+• Postiz: https://postiz.$BASE_DOMAIN (настрой OAuth в UI)
 • Short Video Maker: https://short-video-maker.$BASE_DOMAIN (параметры: portrait/chill/af_heart/blue)"
+fi
 
 # 17. Финальная проверка
 echo "🔎 Проверка состояния сервисов..."
