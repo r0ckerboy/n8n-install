@@ -23,7 +23,6 @@ RUN apk add --no-cache --virtual .build-deps \
 COPY requirements.txt /tmp/
 RUN if [ -f /tmp/requirements.txt ]; then \
     pip3 install --no-cache-dir -r /tmp/requirements.txt; \
-    fi
 
 # Основные npm-пакеты (устанавливаем глобально в образ)
 RUN npm install -g --omit=optional \
