@@ -31,18 +31,18 @@ read -p "🌐 Введите базовый домен (например: exampl
 read -p "📧 Введите email для Let's Encrypt: " EMAIL
 read -p "🔐 Введите пароль для Postgres: " POSTGRES_PASSWORD
 
-# Запрос Pexels API ключа с проверкой
+# Запрос Pexels API ключа с улучшенной проверкой
 if [ -z "$PEXELS_API_KEY" ]; then
     while true; do
-        read -p "🔑 Введите Pexels API ключ для Short Video Maker (получи на https://www.pexels.com/api/): " PEXELS_API_KEY
-        # Очистка от пробелов и переносов
-        PEXELS_API_KEY=$(echo -n "$PEXELS_API_KEY" | tr -d ' \t\r\n')
-        echo "🔍 Отладка: Длина ключа = ${#PEXELS_API_KEY}, ключ = $PEXELS_API_KEY"
-        if [ ${#PEXELS_API_KEY} -ge 20 ]; then
+        read -p "🔑 Введите Pexels API ключ для Short Video Maker (получи на https://www.pexels.com/api/, только буквы и цифры): " PEXELS_API_KEY
+        # Очистка от пробелов и переносов, проверка формата
+        PEXELS_API_KEY=$(echo -n "$PEXELS_API_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
+        if [ -z "$PEXELS_API_KEY" ] || [ ${#PEXELS_API_KEY} -lt 20 ]; then
+            echo "❗ Ключ должен содержать только буквы и цифры, минимум 20 символов. Попробуй снова."
+        else
+            echo "🔍 Отладка: Длина ключа = ${#PEXELS_API_KEY}, ключ = $PEXELS_API_KEY"
             echo "✅ Pexels API ключ принят"
             break
-        else
-            echo "❗ Ключ должен быть минимум 20 символов. Попробуй снова."
         fi
     done
 else
@@ -120,7 +120,15 @@ EOF
     echo "✅ install-community-nodes.sh создан. Отредактируй его для нужных нод."
 fi
 
-# 6. Генерация .env
+# 6. Коррекция Dockerfile.n8n (удаление строк с requirements.txt, если файл отсутствует)
+if [ ! -f "requirements.txt" ]; then
+    sed -i '/COPY requirements.txt \/tmp\//d' Dockerfile.n8n
+    sed -i '/RUN if \[ -f \/tmp\/requirements.txt \]; then \\$/d' Dockerfile.n8n
+    sed -i '/pip3 install --no-cache-dir -r \/tmp\/requirements.txt;/d' Dockerfile.n8n
+    echo "⚠️ Файл requirements.txt отсутствует, связанные строки удалены из Dockerfile.n8n."
+fi
+
+# 7. Генерация .env
 cat > ".env" <<EOF
 BASE_DOMAIN=$BASE_DOMAIN
 EMAIL=$EMAIL
@@ -133,13 +141,13 @@ EOF
 
 chmod 600 .env
 
-# 7. Создание директорий
+# 8. Создание директорий
 mkdir -p traefik/{acme,logs} postgres-data redis-data videos data backups postiz-data
 touch traefik/acme/acme.json
 chmod 600 traefik/acme/acme.json
 chown -R 1000:1000 data backups videos postiz-data
 
-# 8. Конфиг Traefik (traefik.yml)
+# 9. Конфиг Traefik (traefik.yml)
 cat > "traefik.yml" <<EOF
 global:
   sendAnonymousUsage: false
@@ -167,7 +175,7 @@ certificatesResolvers:
         entryPoint: web
 EOF
 
-# 9. Динамический конфиг Traefik (dynamic.yml)
+# 10. Динамический конфиг Traefik (dynamic.yml)
 cat > "dynamic.yml" <<EOF
 http:
   middlewares:
@@ -216,7 +224,7 @@ http:
           - url: http://short-video-maker:3123
 EOF
 
-# 10. Обновленный docker-compose.yml
+# 11. Обновленный docker-compose.yml
 cat > "docker-compose.yml" <<EOF
 services:
   traefik:
@@ -374,7 +382,7 @@ EOSQL
 EOF
 chmod +x init-postgres.sh
 
-# 11. Расширенный скрипт бэкапа (backup_all.sh)
+# 12. Расширенный скрипт бэкапа (backup_all.sh)
 cat > "backup_all.sh" <<'EOF'
 #!/bin/bash
 set -e
@@ -430,160 +438,18 @@ curl -s -X POST https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage \
 EOF
 chmod +x backup_all.sh
 
-# 12. Сборка и запуск
+# 13. Сборка и запуск
 echo "🚀 Запуск системы..."
 if [ -f "Dockerfile.n8n" ]; then
-    docker build -f Dockerfile.n8n -t n8n-custom:latest . || echo "⚠️ Сборка n8n-custom провалилась, используем стандартный образ n8n"
+    docker build -f Dockerfile.n8n -t n8n-custom:latest . || {
+        echo "⚠️ Сборка n8n-custom провалилась, используем стандартный образ n8n"
+        sed -i '/n8n:/,/^[^ ]/ s/build:/image: n8nio/n8n/' docker-compose.yml || \
+        sed -i '27s/.*/    image: n8nio/n8n/' docker-compose.yml
+    }
 else
     echo "⚠️ Dockerfile.n8n не найден, используем стандартный образ n8n"
-fi
-
-if [ ! -f "docker-compose.yml" ] || ! grep -q "n8n:" docker-compose.yml; then
-    echo "⚠️ Ошибка в docker-compose.yml. Исправляем..."
     sed -i '/n8n:/,/^[^ ]/ s/build:/image: n8nio/n8n/' docker-compose.yml || \
-    cat > "docker-compose.yml" <<EOF
-services:
-  n8n:
-    image: n8nio/n8n
-    restart: unless-stopped
-    environment:
-      - N8N_HOST=n8n.$BASE_DOMAIN
-      - N8N_PROTOCOL=https
-      - N8N_ENCRYPTION_KEY=\${N8N_ENCRYPTION_KEY}
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_DATABASE=n8n
-      - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_USER=postgres
-      - DB_POSTGRESDB_PASSWORD=\${POSTGRES_PASSWORD}
-    volumes:
-      - ./data:/home/node/.n8n
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.rule=Host(\`n8n.$BASE_DOMAIN\`)"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5678/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-EOF
-    cat >> "docker-compose.yml" <<EOF
-  traefik:
-    image: traefik:v2.10
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./traefik.yml:/etc/traefik/traefik.yml
-      - ./dynamic.yml:/etc/traefik/dynamic.yml
-      - ./traefik/acme:/etc/traefik/acme
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    labels:
-      - "traefik.enable=true"
-    healthcheck:
-      test: ["CMD", "traefik", "healthcheck"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  postgres:
-    image: postgres:13
-    restart: unless-stopped
-    environment:
-      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
-      - POSTGRES_DB=n8n
-      - POSTGRES_MULTIPLE_DATABASES=postiz
-    volumes:
-      - ./postgres-data:/var/lib/postgresql/data
-      - ./init-postgres.sh:/docker-entrypoint-initdb.d/init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:6
-    restart: unless-stopped
-    volumes:
-      - ./redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    command: redis-server --appendonly yes
-
-  postiz:
-    image: gitroomhq/postiz-app:latest
-    restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgresql://postgres:\${POSTGRES_PASSWORD}@postgres:5432/postiz
-      - REDIS_URL=redis://redis:6379
-      - NEXTAUTH_URL=https://postiz.$BASE_DOMAIN
-      - NEXTAUTH_SECRET=\$(openssl rand -base64 32)
-    volumes:
-      - ./postiz-data:/app/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.postiz.entrypoints=websecure"
-      - "traefik.http.routers.postiz.rule=Host(\`postiz.$BASE_DOMAIN\`)"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    command: sh -c "npx prisma migrate deploy && npm run start"
-
-  short-video-maker:
-    image: gyoridavid/short-video-maker:latest-tiny
-    restart: unless-stopped
-    environment:
-      - PEXELS_API_KEY=\${PEXELS_API_KEY}
-      - LOG_LEVEL=debug
-      - KOKORO_MODEL_PRECISION=q4
-      - CONCURRENCY=1
-      - VIDEO_CACHE_SIZE_IN_BYTES=2097152000
-      - WHISPER_MODEL=tiny.en
-      - voice=af_heart
-      - orientation=portrait
-      - music=chill
-      - captionPosition=bottom
-      - musicVolume=high
-      - captionBackgroundColor=blue
-      - paddingBack=1500
-    volumes:
-      - ./videos:/app/data/videos
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.short-video-maker.entrypoints=websecure"
-      - "traefik.http.routers.short-video-maker.rule=Host(\`short-video-maker.$BASE_DOMAIN\`)"
-      - "traefik.http.services.short-video-maker.loadbalancer.server.port=3123"
-    depends_on:
-      - traefik
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3123/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  bot:
-    build: ./bot
-    restart: unless-stopped
-    environment:
-      - TG_BOT_TOKEN=\${TG_BOT_TOKEN}
-      - TG_USER_ID=\${TG_USER_ID}
-EOF
+    sed -i '27s/.*/    image: n8nio/n8n/' docker-compose.yml
 fi
 
 docker compose down --remove-orphans || true
@@ -597,7 +463,7 @@ for i in {1..12}; do
     echo "⏳ Проверка состояния ($i/12)..."
 done
 
-# 13. Проверка состояния с OAuth-тестом для Postiz
+# 14. Проверка состояния с OAuth-тестом для Postiz
 echo "🔍 Детальная проверка состояния:"
 check_service() {
     local service=$1
@@ -626,11 +492,11 @@ for service in traefik n8n postgres redis postiz short-video-maker; do
     check_service $service
 done
 
-# 14. Настройка cron для бэкапов
+# 15. Настройка cron для бэкапов
 (crontab -l 2>/dev/null; echo "0 2 * * * /opt/n8n-install/backup_all.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
 echo "✅ Cron настроен: ежедневные бэкапы в ./backups (ротация 7 дней)"
 
-# 15. Уведомление в Telegram
+# 16. Уведомление в Telegram
 curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
     -d chat_id=$TG_USER_ID \
     -d text="✅ Установка завершена! Доступно:
@@ -638,7 +504,7 @@ curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
 • Postiz: https://postiz.$BASE_DOMAIN (настрой OAuth для соцсетей в UI)
 • Short Video Maker: https://short-video-maker.$BASE_DOMAIN (параметры: portrait/chill/af_heart/blue)"
 
-# 16. Финальная проверка
+# 17. Финальная проверка
 echo "🔎 Проверка состояния сервисов..."
 for service in n8n postiz short-video-maker; do
     if docker compose ps $service | grep -q "Up"; then
