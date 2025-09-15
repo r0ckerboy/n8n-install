@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Защита от CRLF (Windows-форматирования)
+# Защита от CRLF (Windows-форматирование)
 if file -b "$0" | grep -q CRLF; then
     echo "❗ Обнаружены CRLF-символы. Исправляем кодировку..."
     sed -i 's/\r$//' "$0"
@@ -30,21 +30,33 @@ echo "-----------------------------------------------------------"
 read -p "🌐 Введите базовый домен (например: example.com): " BASE_DOMAIN
 read -p "📧 Введите email для Let's Encrypt: " EMAIL
 read -p "🔐 Введите пароль для Postgres: " POSTGRES_PASSWORD
-read -p "🔑 Введите Pexels API ключ для Short Video Maker: " PEXELS_API_KEY
+
+# Запрос Pexels API ключа с проверкой
+if [ -z "$PEXELS_API_KEY" ]; then
+    while true; do
+        read -p "🔑 Введите Pexels API ключ для Short Video Maker (получи на https://www.pexels.com/api/): " PEXELS_API_KEY
+        # Очистка от пробелов и переносов
+        PEXELS_API_KEY=$(echo -n "$PEXELS_API_KEY" | tr -d ' \t\r\n')
+        echo "🔍 Отладка: Длина ключа = ${#PEXELS_API_KEY}, ключ = $PEXELS_API_KEY"
+        if [ ${#PEXELS_API_KEY} -ge 20 ]; then
+            echo "✅ Pexels API ключ принят"
+            break
+        else
+            echo "❗ Ключ должен быть минимум 20 символов. Попробуй снова."
+        fi
+    done
+else
+    echo "✅ Используется Pexels API ключ из переменной окружения (длина: ${#PEXELS_API_KEY})"
+fi
+
 read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
 read -p "👤 Введите Telegram User ID: " TG_USER_ID
 read -p "🗝️ Введите ключ шифрования n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
 
-# Исправленный блок для ключа шифрования
+# Генерация ключа шифрования
 if [ -z "$N8N_ENCRYPTION_KEY" ]; then
     N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
     echo "✅ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
-fi
-
-# Валидация Pexels API ключа
-if [ -z "$PEXELS_API_KEY" ] || [ ${#PEXELS_API_KEY} -lt 20 ]; then
-    echo "❗ Pexels API ключ обязателен и должен быть валидным (минимум 20 символов). Получи на https://www.pexels.com/api/"
-    exit 1
 fi
 
 # 2. Установка Docker и Compose
