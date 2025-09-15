@@ -1,80 +1,22 @@
-# Базовый образ n8n (на Alpine)
+# Базовый образ n8n (основан на Debian)
 FROM n8nio/n8n:latest
 
 # Переключаемся на root для установки зависимостей
 USER root
 
-# Установка системных зависимостей через apk (Alpine)
-RUN apk add --no-cache --virtual .build-deps \
-    bash \
-    curl \
+# Установка системных зависимостей через apt-get
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
     git \
-    make \
-    g++ \
-    gcc \
-    python3 \
-    py3-pip \
-    libffi-dev \
-    openssl-dev \
-    ffmpeg
+    && rm -rf /var/lib/apt/lists/*
 
-# Установка Python-библиотек с кэшированием
-COPY requirements.txt /tmp/
-RUN if [ -f /tmp/requirements.txt ]; then \
-    pip3 install --no-cache-dir -r /tmp/requirements.txt; \
-
-# Основные npm-пакеты (устанавливаем глобально в образ)
-RUN npm install -g --omit=optional \
-    axios \
-    node-fetch@2 \
-    form-data \
-    moment \
-    date-fns \
-    lodash \
-    fs-extra \
-    path \
-    csv-parser \
-    xml2js \
-    js-yaml \
-    xlsx \
-    jsonwebtoken \
-    simple-oauth2 \
-    uuid \
-    bcrypt \
-    validator \
-    joi \
-    winston \
-    dotenv
-
-# Опциональные пакеты (могут требовать дополнительных зависимостей)
-RUN for pkg in \
-    openai \
-    @tensorflow/tfjs-node \
-    langchain \
-    langchain-openai \
-    node-telegram-bot-api \
-    discord.js \
-    vk-io \
-    fluent-ffmpeg \
-    yt-dlp-exec \
-    google-tts-api \
-    ; do \
-    npm install -g --omit=optional "$pkg" || echo "⚠️ Пропускаем $pkg из-за ошибки"; \
-    done
-
-# Очистка временных файлов и кэша
-RUN apk del .build-deps \
-    && rm -rf /var/cache/apk/* \
-    /tmp/* \
-    /root/.cache \
-    /root/.npm
+# Копируем и делаем исполняемым скрипт установки community-нод
+COPY --chown=node:node install-community-nodes.sh /home/node/
+RUN chmod +x /home/node/install-community-nodes.sh
 
 # Возвращаем пользователя node для безопасности
 USER node
 
-# Установка community-нод при старте (через скрипт)
-COPY --chown=node:node install-community-nodes.sh /home/node/
-RUN chmod +x /home/node/install-community-nodes.sh
-
-# Точка входа с установкой community-нод
-ENTRYPOINT ["/bin/sh", "-c", "/home/node/install-community-nodes.sh && docker-entrypoint.sh node"]
+# Запускаем скрипт установки нод перед стартом основного приложения
+# Docker-entrypoint n8n сам вызовет 'tini', поэтому мы просто добавляем наш скрипт перед ним
+ENTRYPOINT ["/bin/sh", "-c", "/home/node/install-community-nodes.sh && /docker-entrypoint.sh"]
