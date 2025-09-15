@@ -1,20 +1,11 @@
-FROM node:18-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Установка зависимостей для бэкапов
-RUN apk add --no-cache \
-    docker-cli \
-    postgresql-client \
-    bash
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Копируем файлы
-COPY package*.json ./
-RUN npm install
+COPY bot.py .
 
-COPY . .
-
-# Права на скрипты бэкапа
-RUN chmod +x /app/backup_scripts/*.sh
-
-CMD ["node", "bot/bot.js"]
+CMD ["python", "bot.py"]
+```*   **`bot/requirements.txt`**
