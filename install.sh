@@ -1,94 +1,80 @@
 #!/bin/bash
 set -e
 
-# --- ФУНКЦИИ ---
+# --- NETRUNNER'S CONSOLE ---
+C_CYAN='\033[0;36m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[0;33m'
+C_RED='\033[0;31m'
+C_NC='\033[0m' # No Color
 
-# Функция для вывода цветных сообщений
-log_info() {
-    echo -e "\e[34mINFO\e[0m: $1"
-}
+log_jack_in() { echo -e "${C_CYAN}>_ [JACKING IN]${C_NC} $1"; }
+log_preem() { echo -e "${C_GREEN}>_ [PREEM]${C_NC} $1"; }
+log_glitch() { echo -e "${C_YELLOW}>_ [GLITCH DETECTED]${C_NC} $1"; }
+log_flatline() { echo -e "${C_RED}>_ [FLATLINED]${C_NC} $1"; exit 1; }
 
-log_success() {
-    echo -e "\e[32mSUCCESS\e[0m: $1"
-}
-
-log_warning() {
-    echo -e "\e[33mWARNING\e[0m: $1"
-}
-
-log_error() {
-    echo -e "\e[31mERROR\e[0m: $1"
-    exit 1
-}
-
-# Проверка прав root
-check_root() {
-    if (( EUID != 0 )); then
-        log_error "Скрипт должен быть запущен от имени root: sudo bash $0"
-    fi
-}
-
-# Установка зависимостей
-install_dependencies() {
-    log_info "Проверка и установка необходимых пакетов..."
-    DEPS=("git" "curl" "docker.io" "docker-compose-v2")
-    PACKAGES_TO_INSTALL=()
-
-    for dep in "${DEPS[@]}"; do
-        if ! command -v "${dep//-v2/}" &>/dev/null; then
-            PACKAGES_TO_INSTALL+=("$dep")
-        fi
-    done
-
-    if [ ${#PACKAGES_TO_INSTALL[@]} -gt 0 ]; then
-        log_info "Будут установлены: ${PACKAGES_TO_INSTALL[*]}"
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -y
-        for pkg in "${PACKAGES_TO_INSTALL[@]}"; do
-            apt-get install -y --no-install-recommends "$pkg"
-        done
-    else
-        log_success "Все зависимости уже установлены."
-    fi
-}
-
-# --- ОСНОВНОЙ СКРИПТ ---
-
+# --- MAIN SEQUENCE ---
 clear
-log_info "Запуск автоматической установки стека n8n & Co."
+echo -e "${C_CYAN}"
+cat << "EOF"
+ __   __   ___  __       __   ___  __       __  
+/  ` /  \ |__  |__) \ / /__` |__  |__) \ / /__` 
+\__, \__/ |___ |  \  |  .__/ |___ |  \  |  .__/ 
+                                                
+EOF
+echo -e "INITIALIZING NETRUNNER STACK // NIGHT CITY v2.0.77${C_NC}"
 echo "----------------------------------------------------"
 
-check_root
-install_dependencies
+# Check root access
+if (( EUID != 0 )); then
+    log_flatline "Corpo-rats only. Root access required."
+fi
 
-# Клонирование репозитория
+# Install dependencies
+log_jack_in "Scanning for required chrome..."
+DEPS=("git" "curl" "docker.io" "docker-compose-v2")
+PACKAGES_TO_INSTALL=()
+for dep in "${DEPS[@]}"; do
+    if ! command -v "${dep//-v2/}" &>/dev/null; then
+        PACKAGES_TO_INSTALL+=("$dep")
+    fi
+done
+
+if [ ${#PACKAGES_TO_INSTALL[@]} -gt 0 ]; then
+    log_jack_in "Injecting new software: ${PACKAGES_TO_INSTALL[*]}"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y --no-install-recommends "${PACKAGES_TO_INSTALL[@]}"
+else
+    log_preem "System chrome is up to date."
+fi
+
+# Clone repository
 INSTALL_DIR="/opt/n8n-stack"
 if [ -d "$INSTALL_DIR" ]; then
-    log_warning "Директория $INSTALL_DIR уже существует. Удаляем для чистой установки."
+    log_glitch "Residue detected in $INSTALL_DIR. Wiping..."
     rm -rf "$INSTALL_DIR"
 fi
-log_info "Клонируем репозиторий в $INSTALL_DIR..."
+log_jack_in "Downloading schematics from the Net..."
 git clone https://github.com/r0ckerboy/n8n-beget-install.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# Сбор данных от пользователя
-log_info "Пожалуйста, введите данные для конфигурации:"
-read -p "- Базовый домен (например, example.com): " BASE_DOMAIN
-read -p "- Email для SSL-сертификатов (Let's Encrypt): " LETSENCRYPT_EMAIL
-read -sp "- Придумайте СЛОЖНЫЙ пароль для Postgres: " POSTGRES_PASSWORD
+# Get user data
+log_jack_in "Fixer requires auth-data for this gig:"
+read -p "- Your DOMAIN_ID (e.g., example.com): " BASE_DOMAIN
+read -p "- LETSENCRYPT Email (for secure handshake): " LETSENCRYPT_EMAIL
+read -sp "- ICE Passkey for Postgres daemon: " POSTGRES_PASSWORD
 echo
-read -p "- API ключ от Pexels: " PEXELS_API_KEY
-read -p "- Токен вашего Telegram-бота: " TELEGRAM_BOT_TOKEN
-read -p "- ID вашего Telegram-пользователя (получить у @userinfobot): " TELEGRAM_USER_ID
+read -p "- Pexels API Credstick: " PEXELS_API_KEY
+read -p "- Telegram Bot Access Token: " TELEGRAM_BOT_TOKEN
+read -p "- Your personal Telegram Net-ID: " TELEGRAM_USER_ID
 
-# Генерация ключа шифрования n8n
+# Generate encryption key
 N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
-log_success "Сгенерирован ключ шифрования для n8n."
+log_preem "Generated AES-256 encryption key."
 
-# Создание .env файла из шаблона
+# Create .env file
 cp .env.template .env
-
-# Замена значений в .env
 sed -i "s|BASE_DOMAIN=.*|BASE_DOMAIN=${BASE_DOMAIN}|" .env
 sed -i "s|LETSENCRYPT_EMAIL=.*|LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}|" .env
 sed -i "s|POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
@@ -96,35 +82,33 @@ sed -i "s|N8N_ENCRYPTION_KEY=.*|N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}|" .env
 sed -i "s|PEXELS_API_KEY=.*|PEXELS_API_KEY=${PEXELS_API_KEY}|" .env
 sed -i "s|TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}|" .env
 sed -i "s|TELEGRAM_USER_ID=.*|TELEGRAM_USER_ID=${TELEGRAM_USER_ID}|" .env
+log_preem "Auth-data compiled and secured."
 
-log_success ".env файл успешно сконфигурирован."
-
-# Создание необходимых директорий и файлов
-log_info "Создание директорий и файлов..."
-mkdir -p ./data/postgres ./data/redis ./data/n8n ./data/letsencrypt ./data/videos
+# Create directories
+log_jack_in "Allocating memory shards and data-fortress..."
+mkdir -p ./data/{postgres,redis,n8n,letsencrypt,videos}
 touch ./data/letsencrypt/acme.json
 chmod 600 ./data/letsencrypt/acme.json
 
-# Запуск Docker Compose
-log_info "Сборка кастомного образа n8n (это может занять несколько минут)..."
+# Build and run
+log_jack_in "Compiling custom n8n daemon... (might take a while)"
 docker compose build n8n
-
-log_info "Запуск всех сервисов в фоновом режиме..."
+log_jack_in "AWAKENING DAEMONS... (stand by)"
 docker compose up -d
 
-# Настройка cron для бэкапов
-log_info "Настройка ежедневного резервного копирования..."
+# Setup cron
+log_jack_in "Programming backup subroutine (daily, 0200 hours)..."
 (crontab -l 2>/dev/null | grep -v "backup.sh" ; echo "0 2 * * * cd $INSTALL_DIR && ./backup.sh >> /var/log/backup.log 2>&1") | crontab -
+log_preem "Backup daemon is online."
 
-log_success "Cron задача для бэкапов успешно добавлена."
-
-# Финальное сообщение
+# Final message
 echo "----------------------------------------------------"
-log_success "Установка успешно завершена!"
-echo "Доступные сервисы:"
-echo " • n8n: https://n8n.${BASE_DOMAIN}"
-echo " • Postiz: https://postiz.${BASE_DOMAIN}"
-echo " • Short Video Maker: https://svm.${BASE_DOMAIN}"
-echo " • Traefik Dashboard: https://traefik.${BASE_DOMAIN}"
+log_preem "SYSTEM ONLINE. Gig complete."
+echo "Available Net access points:"
+echo -e " > n8n: ${C_YELLOW}https://n8n.${BASE_DOMAIN}${C_NC}"
+echo -e " > Postiz (Gitroom): ${C_YELLOW}https://postiz.${BASE_DOMAIN}${C_NC}"
+echo -e " > Short Video Maker: ${C_YELLOW}https://svm.${BASE_DOMAIN}${C_NC}"
+echo -e " > Traefik ICE Console: ${C_YELLOW}https://traefik.${BASE_DOMAIN}${C_NC}"
 echo ""
-log_info "Дайте системе 1-2 минуты на полный запуск и генерацию SSL-сертификатов."
+log_jack_in "Allow daemons 1-2 minutes to calibrate and establish secure connection."
+echo -e "${C_GREEN}Stay safe on the Net, choom.${C_NC}"
