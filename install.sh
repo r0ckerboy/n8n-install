@@ -34,10 +34,18 @@ read -p "🔐 Введите пароль для Postgres: " POSTGRES_PASSWORD
 # Запрос Pexels API ключа с улучшенной проверкой
 if [ -z "$PEXELS_API_KEY" ]; then
     while true; do
-        read -r -p "🔑 Введите Pexels API ключ (только буквы/цифры, ≥20 символов): " INPUT_KEY
-        sleep 0.5  # Пауза для стабильности ввода
+        read -r -p "🔑 Введите Pexels API ключ (только буквы/цифры, ≥20 символов, получите на https://www.pexels.com/api/): " INPUT_KEY
+        sleep 1  # Пауза для стабильности ввода
+        echo "Введено: $INPUT_KEY"  # Отладочный вывод
         PEXELS_API_KEY=$(echo -n "$INPUT_KEY" | tr -d ' \t\r\n' | grep -o '^[a-zA-Z0-9]\+$' || true)
-        if [ -z "$PEXELS_API_KEY" ] || [ ${#PEXELS_API_KEY} -lt 20 ]; then
+        if [ -z "$PEXELS_API_KEY" ]; then
+            echo "❗ Ввод пустой. Введите ключ или нажмите Enter для прерывания (добавьте ключ вручную в .env)."
+            read -r -p "Продолжить (Enter) или выйти (exit)? " CHOICE
+            if [ "$CHOICE" = "exit" ]; then
+                echo "❗ Установка прервана. Добавьте PEXELS_API_KEY в .env и запустите заново."
+                exit 1
+            fi
+        elif [ ${#PEXELS_API_KEY} -lt 20 ]; then
             echo "❗ Некорректный ключ (только alphanum, ≥20 символов). Попробуй снова."
         else
             echo "🔍 Отладка: Длина = ${#PEXELS_API_KEY}, ключ принят."
@@ -427,7 +435,6 @@ echo "🚀 Запуск системы..."
 if [ -f "Dockerfile.n8n" ]; then
     docker build -f Dockerfile.n8n -t n8n-custom:latest . || {
         echo "⚠️ Сборка n8n-custom провалилась, используем стандартный образ n8n"
-        # Точная замена в docker-compose.yml
         sed -i 's/build:/image: n8nio\/n8n/' docker-compose.yml
         sed -i '/^  n8n:/,/^  / s/^  n8n:/  n8n:\n    image: n8nio\/n8n/' docker-compose.yml
     }
