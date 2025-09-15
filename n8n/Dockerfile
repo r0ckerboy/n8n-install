@@ -1,14 +1,14 @@
-# Базовый образ n8n (основан на Debian)
+# Базовый образ n8n (основан на Alpine Linux)
 FROM n8nio/n8n:latest
 
 # Переключаемся на root для установки зависимостей
 USER root
 
-# Установка системных зависимостей через apt-get
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Установка системных зависимостей через apk (менеджер пакетов Alpine)
+# --no-cache не создает лишний кэш, что делает образ меньше
+RUN apk add --no-cache \
     ffmpeg \
-    git \
-    && rm -rf /var/lib/apt/lists/*
+    git
 
 # Копируем и делаем исполняемым скрипт установки community-нод
 COPY --chown=node:node install-community-nodes.sh /home/node/
@@ -18,5 +18,4 @@ RUN chmod +x /home/node/install-community-nodes.sh
 USER node
 
 # Запускаем скрипт установки нод перед стартом основного приложения
-# Docker-entrypoint n8n сам вызовет 'tini', поэтому мы просто добавляем наш скрипт перед ним
 ENTRYPOINT ["/bin/sh", "-c", "/home/node/install-community-nodes.sh && /docker-entrypoint.sh"]
