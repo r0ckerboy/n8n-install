@@ -1,6 +1,8 @@
+version: '3.8'
+
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:${TRAEFIK_VERSION:-v2.11}
     container_name: traefik
     restart: unless-stopped
     command:
@@ -19,10 +21,10 @@ services:
       - "443:443"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
-      - "./letsencrypt-data:/letsencrypt"
+      - "./data/letsencrypt:/letsencrypt"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN_TRAEFIK}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN_TRAEFIK:-traefik}.${BASE_DOMAIN}`)"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
@@ -30,51 +32,60 @@ services:
       - web
 
   postgres:
-    image: postgres:15
+    image: postgres:${POSTGRES_VERSION:-16-alpine}
     container_name: postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB:-main_db}
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data
     networks:
       - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-main_db}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:alpine
+    image: redis:${REDIS_VERSION:-7-alpine}
     container_name: redis
     restart: unless-stopped
     volumes:
-      - redis-data:/data
+      - ./data/redis:/data
     networks:
       - internal
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   n8n:
-    build:
-      context: .
-      dockerfile: Dockerfile.n8n
+    build: ./n8n
     container_name: n8n
     restart: unless-stopped
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
-      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-main_db}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER:-admin}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      - N8N_HOST=${SUBDOMAIN_N8N}.${BASE_DOMAIN}
-      - WEBHOOK_URL=https://${SUBDOMAIN_N8N}.${BASE_DOMAIN}/
-      - GENERIC_TIMEZONE=${TZ}
+      - N8N_HOST=${SUBDOMAIN_N8N:-n8n}.${BASE_DOMAIN}
+      - WEBHOOK_URL=https://${SUBDOMAIN_N8N:-n8n}.${BASE_DOMAIN}/
+      - GENERIC_TIMEZONE=${TZ:-Europe/Moscow}
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
     volumes:
-      - n8n-data:/home/node/.n8n
+      - ./data/n8n:/home/node/.n8n
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN_N8N}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN_N8N:-n8n}.${BASE_DOMAIN}`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
@@ -83,51 +94,69 @@ services:
       - internal
 
   postiz:
-    build:
-      context: ./postiz
-      dockerfile: Dockerfile
+    image: gitroomhq/postiz-app:${POSTIZ_VERSION:-latest}
     container_name: postiz
     restart: unless-stopped
     environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - NEXTAUTH_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
+      - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY} # Используем тот же ключ для простоты
     depends_on:
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}`)"
       - "traefik.http.routers.postiz.entrypoints=websecure"
       - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-      - "traefik.http.services.postiz.loadbalancer.server.port=8000"
+      - "traefik.http.services.postiz.loadbalancer.server.port=3000"
     networks:
       - web
       - internal
 
   short-video-maker:
-    build:
-      context: ./short-video-maker
-      dockerfile: Dockerfile
+    image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
     container_name: short-video-maker
     restart: unless-stopped
     environment:
       - PEXELS_API_KEY=${PEXELS_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID}
+    volumes:
+      - ./data/videos:/app/data/videos
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.svm.rule=Host(`${SUBDOMAIN_SVM}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.svm.rule=Host(`${SUBDOMAIN_SVM:-svm}.${BASE_DOMAIN}`)"
       - "traefik.http.routers.svm.entrypoints=websecure"
       - "traefik.http.routers.svm.tls.certresolver=letsencrypt"
-      - "traefik.http.services.svm.loadbalancer.server.port=8001"
+      - "traefik.http.services.svm.loadbalancer.server.port=3123"
     networks:
       - web
+
+  bot:
+    build: ./bot
+    container_name: bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID}
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
 
 volumes:
   postgres-data:
   n8n-data:
   letsencrypt-data:
   redis-data:
+  videos-data:
 
 networks:
   web:
+    driver: bridge
   internal:
+    driver: bridge
