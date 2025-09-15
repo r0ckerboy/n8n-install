@@ -1,136 +1,77 @@
 #!/bin/bash
+set -e
 
-#================================================================================================
-#
-#   Скрипт "Космодром в Коробке"
-#   Автор: Твой бро-нейросеть
-#   Версия: 1.1 (Госприемка)
-#   Описание: Полностью автоматическая установка контент-завода на чистый сервер Ubuntu.
-#   Включает: Docker, Docker Compose, Traefik (с авто-SSL), n8n, Postiz,
-#   и все необходимые базы данных и кэши в изолированных контейнерах.
-#
-#================================================================================================
+# Проверка прав
+if (( EUID != 0 )); then
+    echo "❗ Скрипт должен быть запущен от root: sudo bash <(curl ...)"
+    exit 1
+fi
 
-# --- ASCII Art & Intro ---
-echo -e '
-\033[0;32m
-      _______________
-     /_______________/|
-    /_______________//|
-   /_______________///|  Запускаем сборку "Космодрома в Коробке"!
-  /_______________////|  Версия "Госприемка". Проверка систем
- /_______________/////|  и установка всех зависимостей с нуля.
-/________________////
-|_______________|/
-\033[0m
-'
-
-# --- Переменные и цвета ---
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-# --- Функция установки Docker и Docker Compose ---
-install_docker() {
-    if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
-        echo -e "${YELLOW}Docker или Docker Compose не найдены. Начинаю установку...${NC}"
-        
-        # 1. Обновляем пакеты и ставим зависимости
-        echo "--> Обновление списка пакетов..."
-        apt-get update -qq
-        echo "--> Установка необходимых пакетов..."
-        apt-get install -y ca-certificates curl gnupg
-        
-        # 2. Добавляем официальный GPG ключ Docker
-        echo "--> Добавление GPG ключа Docker..."
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        chmod a+r /etc/apt/keyrings/docker.gpg
-
-        # 3. Настраиваем репозиторий Docker
-        echo "--> Настройка репозитория Docker..."
-        echo \
-          "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-          tee /etc/apt/sources.list.d/docker.list > /dev/null
-        
-        # 4. Устанавливаем Docker Engine
-        echo "--> Повторное обновление и установка Docker Engine..."
-        apt-get update -qq
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-        
-        # 5. Финальная проверка
-        if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
-            echo -e "${RED}❌ Не удалось установить Docker. Прерываю операцию.${NC}"
-            exit 1
-        fi
-        echo -e "${GREEN}✅ Docker и Docker Compose успешно установлены.${NC}"
-    else
-        echo -e "${GREEN}✅ Docker и Docker Compose уже на месте.${NC}"
+# Проверка и установка зависимостей
+echo "🔧 Проверка и установка необходимых пакетов..."
+for pkg in git curl wget openssl; do
+    if ! command -v $pkg &>/dev/null; then
+        apt-get update && apt-get install -y $pkg
     fi
-}
+done
 
-# --- Главный блок скрипта ---
-main() {
-    # --- Шаг 1: Проверки ---
-    echo -e "${YELLOW}🔍 Проверка системы...${NC}"
-    if [ "$(id -u)" != "0" ]; then
-       echo -e "${RED}❌ Этот скрипт нужно запускать с правами root или через sudo.${NC}" 1>&2
-       exit 1
-    fi
-    install_docker
+clear
+echo "🌐 Автоматическая установка n8n + Postiz + Short Video Maker (Traefik)"
+echo "-----------------------------------------------------------"
 
-    # --- Шаг 2: Сбор данных ---
-    echo -e "\n${YELLOW}⚙️ Настройка параметров запуска. Вводи только домены, без https:// ${NC}"
-    read -p "➡️ Введи домен для n8n (например, n8n.your-domain.com): " N8N_HOST
-    read -p "➡️ Введи домен для Postiz (например, postiz.your-domain.com): " POSTIZ_HOST
-    read -p "➡️ Введи свой email (нужен для получения SSL-сертификатов от Let's Encrypt): " LETSENCRYPT_EMAIL
-    
-    if [ -z "$N8N_HOST" ] || [ -z "$POSTIZ_HOST" ] || [ -z "$LETSENCRYPT_EMAIL" ]; then
-        echo -e "${RED}❌ Все поля обязательны. Запусти скрипт снова.${NC}"
-        exit 1
-    fi
+# 1. Ввод переменных
+read -p "🌐 Введите базовый домен (например: example.com): " BASE_DOMAIN
+read -p "📧 Введите email для Let's Encrypt: " EMAIL
+read -p "🔐 Введите пароль для Postgres: " POSTGRES_PASSWORD
+read -p "🔑 Введите Pexels API ключ для Short Video Maker: " PEXELS_API_KEY
+read -p "🤖 Введите Telegram Bot Token: " TG_BOT_TOKEN
+read -p "👤 Введите Telegram User ID: " TG_USER_ID
+read -p "🗝️ Введите ключ шифрования n8n (Enter для генерации): " N8N_ENCRYPTION_KEY
+if [ -z "$N8N_ENCRYPTION_KEY" ]; then
+    N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
+    echo "✅ Сгенерирован ключ шифрования: $N8N_ENCRYPTION_KEY"
+fi
 
-    # --- Шаг 3: Генерация конфигурации ---
-    echo -e "\n${YELLOW}🛠️ Создаю сборочный цех в /opt/content-factory...${NC}"
-    
-    mkdir -p /opt/content-factory
-    cd /opt/content-factory
+# 2. Установка Docker и Compose
+echo "📦 Проверка Docker..."
+if ! command -v docker &>/dev/null; then
+    curl -fsSL https://get.docker.com | sh
+fi
+if ! command -v docker-compose &>/dev/null; then
+    curl -SL https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64 -o /usr/local/bin/docker-compose
+    chmod +x /usr/local/bin/docker-compose
+    ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose || true
+fi
 
-    mkdir -p traefik_data/logs data/{n8n,postgres_n8n,redis_n8n,postiz,postgres_postiz,redis_postiz} videos
+# 3. Клонирование проекта
+echo "📥 Клонируем проект..."
+rm -rf /opt/n8n-install
+git clone https://github.com/r0ckerboy/n8n-beget-install /opt/n8n-install
+cd /opt/n8n-install
 
-    POSTGRES_N8N_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-    POSTGRES_POSTIZ_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-    POSTIZ_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-
-    cat <<EOF > .env
-# --- ОБЩИЕ ---
-TZ=Europe/Moscow
-# --- TRAEFIK ---
-LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
-# --- N8N ---
-N8N_HOST=${N8N_HOST}
-POSTGRES_N8N_DB=n8n
-POSTGRES_N8N_USER=n8n
-POSTGRES_N8N_PASSWORD=${POSTGRES_N8N_PASSWORD}
-# --- POSTIZ ---
-POSTIZ_HOST=${POSTIZ_HOST}
-POSTIZ_ADMIN_PASSWORD=${POSTIZ_ADMIN_PASSWORD}
-POSTGRES_POSTIZ_DB=postiz
-POSTGRES_POSTIZ_USER=postiz
-POSTGRES_POSTIZ_PASSWORD=${POSTGRES_POSTIZ_PASSWORD}
+# 4. Генерация .env
+cat > ".env" <<EOF
+BASE_DOMAIN=$BASE_DOMAIN
+EMAIL=$EMAIL
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+PEXELS_API_KEY=$PEXELS_API_KEY
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+TG_BOT_TOKEN=$TG_BOT_TOKEN
+TG_USER_ID=$TG_USER_ID
 EOF
 
-    cat <<EOF > traefik_data/traefik.yml
+chmod 600 .env
+
+# 5. Создание директорий
+mkdir -p traefik/{acme,logs} postgres-data redis-data videos data backups
+touch traefik/acme/acme.json
+chmod 600 traefik/acme/acme.json
+chown -R 1000:1000 data backups videos
+
+# 6. Конфиг Traefik (traefik.yml)
+cat > "traefik.yml" <<EOF
 global:
-  checkNewVersion: true
-log:
-  level: INFO
-  filePath: "/logs/traefik.log"
-api:
-  dashboard: true
-  insecure: true # Дашборд доступен на порту 8080 (только с сервера). Для внешней доступности нужна доп. настройка
+  sendAnonymousUsage: false
 entryPoints:
   web:
     address: ":80"
@@ -143,183 +84,236 @@ entryPoints:
     address: ":443"
 providers:
   docker:
-    endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
+  file:
+    filename: /etc/traefik/dynamic.yml
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: "${LETSENCRYPT_EMAIL}"
-      storage: "/letsencrypt/acme.json"
+      email: $EMAIL
+      storage: /etc/traefik/acme/acme.json
       httpChallenge:
         entryPoint: web
 EOF
 
-    cat <<EOF > docker-compose.yml
-version: '3.9'
+# 7. Динамический конфиг Traefik (dynamic.yml)
+cat > "dynamic.yml" <<EOF
+http:
+  middlewares:
+    compress:
+      compress: true
+    security-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        sslRedirect: true
+  routers:
+    n8n:
+      rule: "Host(\`n8n.$BASE_DOMAIN\`)"
+      entryPoints: websecure
+      tls:
+        certResolver: letsencrypt
+      service: n8n
+      middlewares: [compress, security-headers]
+    postiz:
+      rule: "Host(\`postiz.$BASE_DOMAIN\`)"
+      entryPoints: websecure
+      tls:
+        certResolver: letsencrypt
+      service: postiz
+      middlewares: [compress, security-headers]
+    short-video-maker:
+      rule: "Host(\`short-video-maker.$BASE_DOMAIN\`)"
+      entryPoints: websecure
+      tls:
+        certResolver: letsencrypt
+      service: short-video-maker
+      middlewares: [compress, security-headers]
+  services:
+    n8n:
+      loadBalancer:
+        servers:
+          - url: http://n8n:5678
+    postiz:
+      loadBalancer:
+        servers:
+          - url: http://postiz:3000
+    short-video-maker:
+      loadBalancer:
+        servers:
+          - url: http://short-video-maker:3123
+EOF
 
+# 8. Обновленный docker-compose.yml
+cat > "docker-compose.yml" <<EOF
 services:
-  # --- СЕТЕВОЙ ШЛЮЗ: TRAEFIK ---
   traefik:
     image: traefik:v2.10
-    container_name: traefik
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
-      # - "127.0.0.1:8080:8080" # Раскомментируй для доступа к дашборду Traefik с сервера
     volumes:
-      - ./traefik_data/traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik_data/letsencrypt:/letsencrypt
-      - ./traefik_data/logs:/logs
+      - ./traefik.yml:/etc/traefik/traefik.yml
+      - ./dynamic.yml:/etc/traefik/dynamic.yml
+      - ./traefik/acme:/etc/traefik/acme
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - proxy
+    labels:
+      - "traefik.enable=true"
 
-  # --- КОМАНДНЫЙ ЦЕНТР: N8N ---
   n8n:
-    image: n8nio/n8n
-    container_name: n8n
+    image: n8n-custom:latest
     restart: unless-stopped
     environment:
-      - N8N_HOST=\${N8N_HOST}
-      - WEBHOOK_URL=https://\${N8N_HOST}/
-      - GENERIC_TIMEZONE=\${TZ}
+      - N8N_HOST=n8n.$BASE_DOMAIN
+      - N8N_PROTOCOL=https
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
       - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres_n8n
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=\${POSTGRES_N8N_DB}
-      - DB_POSTGRESDB_USER=\${POSTGRES_N8N_USER}
-      - DB_POSTGRESDB_PASSWORD=\${POSTGRES_N8N_PASSWORD}
-      - QUEUE_BULL_REDIS_HOST=redis_n8n
-      - QUEUE_BULL_REDIS_PORT=6379
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
     volumes:
-      - ./data/n8n:/home/node/.n8n
-      - ./videos:/videos
-    networks:
-      - proxy # Подключен к внешней сети для приема трафика от Traefik
-      - internal # Подключен к внутренней для общения с базами
-    depends_on:
-      - postgres_n8n
-      - redis_n8n
+      - ./data:/home/node/.n8n
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(\`\${N8N_HOST}\`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
-      - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-
-  postgres_n8n:
-    image: postgres:15
-    container_name: postgres_n8n
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=\${POSTGRES_N8N_DB}
-      - POSTGRES_USER=\${POSTGRES_N8N_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_N8N_PASSWORD}
-    volumes:
-      - ./data/postgres_n8n:/var/lib/postgresql/data
-    networks:
-      - internal
-
-  redis_n8n:
-    image: redis:7
-    container_name: redis_n8n
-    restart: unless-stopped
-    networks:
-      - internal
-
-  # --- ОТДЕЛ ПУБЛИКАЦИИ: POSTIZ ---
-  postiz:
-    image: valkeya/postiz:latest
-    container_name: postiz
-    restart: unless-stopped
-    environment:
-      - APP_URL=https://\${POSTIZ_HOST}
-      - APP_ENV=production
-      - DB_CONNECTION=pgsql
-      - DB_HOST=postgres_postiz
-      - DB_PORT=5432
-      - DB_DATABASE=\${POSTGRES_POSTIZ_DB}
-      - DB_USERNAME=\${POSTGRES_POSTIZ_USER}
-      - DB_PASSWORD=\${POSTGRES_POSTIZ_PASSWORD}
-      - REDIS_HOST=redis_postiz
-      - REDIS_PORT=6379
-    volumes:
-      - ./data/postiz:/app/storage
-    networks:
-      - proxy
-      - internal
+      - "traefik.http.routers.n8n.rule=Host(\`n8n.$BASE_DOMAIN\`)"
     depends_on:
-      - postgres_postiz
-      - redis_postiz
-    command: >
-      bash -c "php artisan migrate --force &&
-               (php artisan p:user:create --name=admin --email=${LETSENCRYPT_EMAIL} --password=${POSTIZ_ADMIN_PASSWORD} --role=Admin || true) &&
-               php artisan serve --host=0.0.0.0 --port=8000"
+      - postgres
+
+  postgres:
+    image: postgres:13
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=n8n
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:6
+    restart: unless-stopped
+    volumes:
+      - ./redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postiz:
+    image: gitroomhq/postiz-app:latest
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/n8n
+      - REDIS_URL=redis://redis:6379
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.postiz.rule=Host(\`\${POSTIZ_HOST}\`)"
       - "traefik.http.routers.postiz.entrypoints=websecure"
-      - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-      - "traefik.http.services.postiz.loadbalancer.server.port=8000"
+      - "traefik.http.routers.postiz.rule=Host(\`postiz.$BASE_DOMAIN\`)"
+    depends_on:
+      - postgres
+      - redis
 
-  postgres_postiz:
-    image: postgres:15
-    container_name: postgres_postiz
+  short-video-maker:
+    image: gyoridavid/short-video-maker:latest-tiny
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=\${POSTGRES_POSTIZ_DB}
-      - POSTGRES_USER=\${POSTGRES_POSTIZ_USER}
-      - POSTGRES_PASSWORD=\${POSTGRES_POSTIZ_PASSWORD}
+      - PEXELS_API_KEY=${PEXELS_API_KEY}
+      - LOG_LEVEL=debug
     volumes:
-      - ./data/postgres_postiz:/var/lib/postgresql/data
-    networks:
-      - internal
+      - ./videos:/app/data/videos
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.short-video-maker.entrypoints=websecure"
+      - "traefik.http.routers.short-video-maker.rule=Host(\`short-video-maker.$BASE_DOMAIN\`)"
+      - "traefik.http.services.short-video-maker.loadbalancer.server.port=3123"
+    depends_on:
+      - traefik
 
-  redis_postiz:
-    image: redis:7
-    container_name: redis_postiz
+  bot:
+    build: ./bot
     restart: unless-stopped
-    networks:
-      - internal
-
-networks:
-  proxy:
-    name: proxy
-  internal:
-    name: internal
-    internal: true
+    environment:
+      - TG_BOT_TOKEN=${TG_BOT_TOKEN}
+      - TG_USER_ID=${TG_USER_ID}
 EOF
 
-    echo -e "${GREEN}✅ Все файлы конфигурации успешно созданы в /opt/content-factory${NC}"
+# 9. Сборка и запуск с улучшенной проверкой
+echo "🚀 Запуск системы..."
+docker build -f Dockerfile.n8n -t n8n-custom:latest .
+# Очистка предыдущих контейнеров (если есть)
+docker compose down --remove-orphans || true
+# Запуск с ожиданием готовности
+docker compose up -d
+echo "⏳ Ожидание запуска сервисов (до 2 минут)..."
+for i in {1..12}; do
+    if docker compose ps | grep -q "running"; then
+        break
+    fi
+    sleep 10
+    echo "⏳ Проверка состояния ($i/12)..."
+done
 
-    # --- Шаг 4: Запуск ---
-    echo -e "\n${YELLOW}🚀 Запускаю двигатели... Скачиваю образы и поднимаю сервисы. Это может занять несколько минут...${NC}"
-    
-    docker compose up -d
-
-    # --- Финальный вывод ---
-    SERVER_IP=$(curl -s -4 https://ifconfig.me)
-    echo -e "\n\n${GREEN}🎉🎉🎉 ПОЕХАЛИ! Твой контент-завод в космосе! 🎉🎉🎉${NC}"
-    echo -e "-----------------------------------------------------------------"
-    echo -e "           ${YELLOW}!!! ВАЖНО: СЛЕДУЮЩИЙ ШАГ !!!${NC}"
-    echo -e "Направь А-записи для твоих доменов на IP-адрес сервера: ${YELLOW}${SERVER_IP}${NC}"
-    echo -e "    - ${N8N_HOST} -> ${SERVER_IP}"
-    echo -e "    - ${POSTIZ_HOST} -> ${SERVER_IP}"
-    echo -e "Как только DNS обновится, SSL-сертификаты будут выпущены автоматически."
-    echo -e "-----------------------------------------------------------------"
-    echo -e "Вот твои доступы (будут работать после обновления DNS):"
-    echo -e "🔹 ${YELLOW}n8n:${NC} https://${N8N_HOST}"
-    echo -e "🔹 ${YELLOW}Postiz:${NC} https://${POSTIZ_HOST}"
-    echo -e "   - ${YELLOW}Логин:${NC} ${LETSENCRYPT_EMAIL}"
-    echo -e "   - ${YELLOW}Пароль:${NC} ${POSTIZ_ADMIN_PASSWORD}"
-    echo -e "-----------------------------------------------------------------"
-    echo -e "\nДля управления используй команды из папки /opt/content-factory:"
-    echo -e "  'docker compose logs -f' - посмотреть логи"
-    echo -e "  'docker compose down'    - остановить завод"
-    echo -e "  'docker compose run --rm [service_name] [command]' - для разовых команд"
-    echo -e "\n${GREEN}Удачных полетов, бро! Теперь это не просто набор скриптов. Это настоящий продукт.${NC}"
+# 10. Улучшенная проверка состояния
+echo "🔍 Детальная проверка состояния:"
+check_service() {
+    local service=$1
+    local status=$(docker compose ps $service | awk 'NR==2 {print $4}')
+    if [ "$status" = "running" ]; then
+        echo "✅ $service работает нормально"
+        return 0
+    else
+        echo "❌ $service имеет проблемы (статус: $status)"
+        echo "=== Логи $service ==="
+        docker compose logs $service --tail=20
+        return 1
+    fi
 }
+check_service traefik
+check_service n8n
+check_service postgres
+check_service redis
+check_service postiz
+check_service short-video-maker
 
-# Запуск основной функции
-main
+# 11. Настройка cron
+chmod +x ./backup_n8n.sh
+(crontab -l 2>/dev/null; echo "0 2 * * * /opt/n8n-install/backup_n8n.sh >> /opt/n8n-install/backup.log 2>&1") | crontab -
+
+# 12. Уведомление в Telegram
+curl -s -X POST https://api.telegram.org/bot$TG_BOT_TOKEN/sendMessage \
+    -d chat_id=$TG_USER_ID \
+    -d text="✅ Установка завершена! Доступно:
+• n8n: https://n8n.$BASE_DOMAIN
+• Postiz: https://postiz.$BASE_DOMAIN
+• Short Video Maker: https://short-video-maker.$BASE_DOMAIN"
+
+# 13. Финальная проверка
+echo "🔎 Проверка состояния сервисов..."
+for service in n8n postiz short-video-maker; do
+    if docker compose ps $service | grep -q "running"; then
+        echo "✅ $service работает нормально"
+    else
+        echo "❌ $service имеет проблемы. Проверьте логи: docker compose logs $service"
+    fi
+done
+
+# 14. Финальный вывод
+echo "📦 Активные контейнеры:"
+docker ps --format "table {{.Names}}\t{{.Status}}"
+echo "🎉 Установка завершена! Доступные сервисы:"
+echo " • n8n: https://n8n.$BASE_DOMAIN"
+echo " • Postiz: https://postiz.$BASE_DOMAIN"
+echo " • Short Video Maker: https://short-video-maker.$BASE_DOMAIN"
+echo ""
+echo "ℹ️ Если какие-то сервисы недоступны, проверьте логи командой:"
+echo " docker compose logs [n8n|postiz|short-video-maker]"
