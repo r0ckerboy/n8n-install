@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   traefik:
     image: traefik:v2.10
@@ -9,7 +11,7 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.email=\${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
@@ -22,7 +24,7 @@ services:
       - "./letsencrypt-data:/letsencrypt"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.traefik-dashboard.rule=Host(`${SUBDOMAIN_TRAEFIK}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.traefik-dashboard.rule=Host(`\${SUBDOMAIN_TRAEFIK}.\${BASE_DOMAIN}`)"
       - "traefik.http.routers.traefik-dashboard.service=api@internal"
       - "traefik.http.routers.traefik-dashboard.entrypoints=websecure"
       - "traefik.http.routers.traefik-dashboard.tls.certresolver=letsencrypt"
@@ -34,9 +36,9 @@ services:
     container_name: postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=\${POSTGRES_DB}
+      - POSTGRES_USER=\${POSTGRES_USER}
+      - POSTGRES_PASSWORD=\${POSTGRES_PASSWORD}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     networks:
@@ -52,7 +54,6 @@ services:
       - internal
 
   n8n:
-    # Для n8n мы по-прежнему собираем кастомный образ, чтобы был ffmpeg
     build:
       context: .
       dockerfile: Dockerfile.n8n
@@ -62,20 +63,20 @@ services:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_PORT=5432
-      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
-      - DB_POSTGRESDB_USER=${POSTGRES_USER}
-      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      - N8N_HOST=${SUBDOMAIN_N8N}.${BASE_DOMAIN}
-      - WEBHOOK_URL=https://${SUBDOMAIN_N8N}.${BASE_DOMAIN}/
-      - GENERIC_TIMEZONE=${TZ}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - DB_POSTGRESDB_DATABASE=\${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=\${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=\${POSTGRES_PASSWORD}
+      - N8N_HOST=\${SUBDOMAIN_N8N}.\${BASE_DOMAIN}
+      - WEBHOOK_URL=https://\${SUBDOMAIN_N8N}.\${BASE_DOMAIN}/
+      - GENERIC_TIMEZONE=\${TZ}
+      - N8N_ENCRYPTION_KEY=\${N8N_ENCRYPTION_KEY}
     volumes:
       - n8n-data:/home/node/.n8n
     depends_on:
       - postgres
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN_N8N}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.n8n.rule=Host(`\${SUBDOMAIN_N8N}.\${BASE_DOMAIN}`)"
       - "traefik.http.routers.n8n.entrypoints=websecure"
       - "traefik.http.routers.n8n.tls.certresolver=letsencrypt"
       - "traefik.http.services.n8n.loadbalancer.server.port=5678"
@@ -83,9 +84,7 @@ services:
       - web
       - internal
 
-  # <<< ИЗМЕНЕНИЕ ЗДЕСЬ
   postiz:
-    # Заменили build на image с правильным публичным образом
     image: postiz/postiz
     container_name: postiz
     restart: unless-stopped
@@ -96,27 +95,25 @@ services:
       - redis
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.postiz.rule=Host(`\${SUBDOMAIN_POSTIZ}.\${BASE_DOMAIN}`)"
       - "traefik.http.routers.postiz.entrypoints=websecure"
       - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-      - "traefik.http.services.postiz.loadbalancer.server.port=3000" # Postiz слушает порт 3000
+      - "traefik.http.services.postiz.loadbalancer.server.port=3000"
     networks:
       - web
       - internal
 
-  # <<< И ИЗМЕНЕНИЕ ЗДЕСЬ
   short-video-maker:
-    # Тоже заменяем build на image. Используем образ от автора репозитория
     image: r0ckerboy/short-video-maker:latest
     container_name: short-video-maker
     restart: unless-stopped
     environment:
-      - PEXELS_API_KEY=${PEXELS_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_USER_ID=${TELEGRAM_USER_ID}
+      - PEXELS_API_KEY=\${PEXELS_API_KEY}
+      - TELEGRAM_BOT_TOKEN=\${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_USER_ID=\${TELEGRAM_USER_ID}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.svm.rule=Host(`${SUBDOMAIN_SVM}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.svm.rule=Host(`\${SUBDOMAIN_SVM}.\${BASE_DOMAIN}`)"
       - "traefik.http.routers.svm.entrypoints=websecure"
       - "traefik.http.routers.svm.tls.certresolver=letsencrypt"
       - "traefik.http.services.svm.loadbalancer.server.port=8001"
@@ -132,3 +129,4 @@ volumes:
 networks:
   web:
   internal:
+EOF
