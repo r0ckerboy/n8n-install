@@ -1,37 +1,44 @@
 #!/bin/bash
 set -e
 
-# --- NETRUNNER'S CONSOLE ---
+# --- КОНСОЛЬ НЕТРАННЕРА ---
 C_CYAN='\033[0;36m'
 C_GREEN='\033[0;32m'
 C_YELLOW='\033[0;33m'
 C_RED='\033[0;31m'
 C_NC='\033[0m' # No Color
 
-log_jack_in() { echo -e "${C_CYAN}>_ [JACKING IN]${C_NC} $1"; }
-log_preem() { echo -e "${C_GREEN}>_ [PREEM]${C_NC} $1"; }
-log_glitch() { echo -e "${C_YELLOW}>_ [GLITCH DETECTED]${C_NC} $1"; }
-log_flatline() { echo -e "${C_RED}>_ [FLATLINED]${C_NC} $1"; exit 1; }
+log_jack_in() { echo -e "${C_CYAN}>_ [ВЗЛОМ ПОРТА]${C_NC} $1"; }
+log_preem() { echo -e "${C_GREEN}>_ [ВЫШАК]${C_NC} $1"; }
+log_glitch() { echo -e "${C_YELLOW}>_ [ГЛИТЧ]${C_NC} $1"; }
+log_flatline() { echo -e "${C_RED}>_ [ФЛЭТЛАЙН]${C_NC} $1"; exit 1; }
 
-# --- MAIN SEQUENCE ---
+# --- ГЛАВНАЯ ПОСЛЕДОВАТЕЛЬНОСТЬ ---
 clear
 echo -e "${C_CYAN}"
+# --- НОВЫЙ ASCII-АРТ ---
 cat << "EOF"
- __   __   ___  __       __   ___  __       __  
-/  ` /  \ |__  |__) \ / /__` |__  |__) \ / /__` 
-\__, \__/ |___ |  \  |  .__/ |___ |  \  |  .__/ 
-                                                
+  _   _   _   _   _   _   _     _   _    _   _   _ 
+ / \ / \ / \ / \ / \ / \ / \   / \ / \  / \ / \ / \ 
+( К | О | Н | Т | Е | Н | Т ) ( З | А )( В | О | Д )    
+ \_/ \_/ \_/ \_/ \_/ \_/ \_/   \_/ \_/  \_/ \_/ \_/     
+
+> [СИСТЕМА ОНЛАЙН]: K O H T E H T - Z A V O D
+> [СТАТУС]: ЗАГРУЗКА... // NIGHT CITY v2.0.77
 EOF
-echo -e "INITIALIZING NETRUNNER STACK // NIGHT CITY v2.0.77${C_NC}"
+echo -e "${C_NC}"
 echo "----------------------------------------------------"
 
-# Check root access
+# ВАЖНЫЙ ФИКС: Начинаем из безопасной домашней директории
+cd ~
+
+# Проверка доступа уровня "Бог"
 if (( EUID != 0 )); then
-    log_flatline "Corpo-rats only. Root access required."
+    log_flatline "Доступ только для корпо-крыс. Нужны права root."
 fi
 
-# Install dependencies
-log_jack_in "Scanning for required chrome..."
+# Установка имплантов
+log_jack_in "Сканирую систему на необходимое железо..."
 DEPS=("git" "curl" "docker.io" "docker-compose-v2")
 PACKAGES_TO_INSTALL=()
 for dep in "${DEPS[@]}"; do
@@ -41,39 +48,39 @@ for dep in "${DEPS[@]}"; do
 done
 
 if [ ${#PACKAGES_TO_INSTALL[@]} -gt 0 ]; then
-    log_jack_in "Injecting new software: ${PACKAGES_TO_INSTALL[*]}"
+    log_jack_in "Заливаю новый софт: ${PACKAGES_TO_INSTALL[*]}"
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
     apt-get install -y --no-install-recommends "${PACKAGES_TO_INSTALL[@]}"
 else
-    log_preem "System chrome is up to date."
+    log_preem "Системное железо в полном порядке."
 fi
 
-# Clone repository
+# Загрузка чертежей
 INSTALL_DIR="/opt/n8n-stack"
 if [ -d "$INSTALL_DIR" ]; then
-    log_glitch "Residue detected in $INSTALL_DIR. Wiping..."
+    log_glitch "Обнаружены остаточные данные в $INSTALL_DIR. Зачищаю..."
     rm -rf "$INSTALL_DIR"
 fi
-log_jack_in "Downloading schematics from the Net..."
+log_jack_in "Качаю чертежи из Сети..."
 git clone https://github.com/r0ckerboy/n8n-beget-install.git "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# Get user data
-log_jack_in "Fixer requires auth-data for this gig:"
-read -p "- Your DOMAIN_ID (e.g., example.com): " BASE_DOMAIN
-read -p "- LETSENCRYPT Email (for secure handshake): " LETSENCRYPT_EMAIL
-read -sp "- ICE Passkey for Postgres daemon: " POSTGRES_PASSWORD
+# Запрос данных для заказа
+log_jack_in "Фиксер требует твои данные для этого дельца:"
+read -p "- Твой ДОМЕН (e.g., example.com): " BASE_DOMAIN
+read -p "- Мыло для LETSENCRYPT (для шифровки канала): " LETSENCRYPT_EMAIL
+read -sp "- Пароль от хранилища данных Postgres: " POSTGRES_PASSWORD
 echo
-read -p "- Pexels API Credstick: " PEXELS_API_KEY
-read -p "- Telegram Bot Access Token: " TELEGRAM_BOT_TOKEN
-read -p "- Your personal Telegram Net-ID: " TELEGRAM_USER_ID
+read -p "- API-ключ от Pexels: " PEXELS_API_KEY
+read -p "- Токен для Telegram-бота: " TELEGRAM_BOT_TOKEN
+read -p "- Твой личный ID в Telegram: " TELEGRAM_USER_ID
 
-# Generate encryption key
+# Генерация ключа шифрования
 N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
-log_preem "Generated AES-256 encryption key."
+log_preem "Сгенерирован ключ шифрования AES-256."
 
-# Create .env file
+# Создание файла с паролями
 cp .env.template .env
 sed -i "s|BASE_DOMAIN=.*|BASE_DOMAIN=${BASE_DOMAIN}|" .env
 sed -i "s|LETSENCRYPT_EMAIL=.*|LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}|" .env
@@ -82,33 +89,33 @@ sed -i "s|N8N_ENCRYPTION_KEY=.*|N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}|" .env
 sed -i "s|PEXELS_API_KEY=.*|PEXELS_API_KEY=${PEXELS_API_KEY}|" .env
 sed -i "s|TELEGRAM_BOT_TOKEN=.*|TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}|" .env
 sed -i "s|TELEGRAM_USER_ID=.*|TELEGRAM_USER_ID=${TELEGRAM_USER_ID}|" .env
-log_preem "Auth-data compiled and secured."
+log_preem "Данные доступа скомпилированы и зашифрованы."
 
-# Create directories
-log_jack_in "Allocating memory shards and data-fortress..."
+# Создание структуры
+log_jack_in "Создаю хранилища и дата-крепость..."
 mkdir -p ./data/{postgres,redis,n8n,letsencrypt,videos}
 touch ./data/letsencrypt/acme.json
 chmod 600 ./data/letsencrypt/acme.json
 
-# Build and run
-log_jack_in "Compiling custom n8n daemon... (might take a while)"
+# Сборка и запуск
+log_jack_in "Компилирую кастомный демон n8n... (может занять время)"
 docker compose build n8n
-log_jack_in "AWAKENING DAEMONS... (stand by)"
+log_jack_in "ПРОБУЖДАЮ ДЕМОНОВ... (ожидайте)"
 docker compose up -d
 
-# Setup cron
-log_jack_in "Programming backup subroutine (daily, 0200 hours)..."
+# Настройка бэкапов
+log_jack_in "Программирую демона-хранителя (бэкапы каждый день в 02:00)..."
 (crontab -l 2>/dev/null | grep -v "backup.sh" ; echo "0 2 * * * cd $INSTALL_DIR && ./backup.sh >> /var/log/backup.log 2>&1") | crontab -
-log_preem "Backup daemon is online."
+log_preem "Демон-хранитель на страже."
 
-# Final message
+# Финальное сообщение
 echo "----------------------------------------------------"
-log_preem "SYSTEM ONLINE. Gig complete."
-echo "Available Net access points:"
+log_preem "СИСТЕМА ОНЛАЙН. Дельце сделано."
+echo "Доступные точки входа в Сеть:"
 echo -e " > n8n: ${C_YELLOW}https://n8n.${BASE_DOMAIN}${C_NC}"
 echo -e " > Postiz (Gitroom): ${C_YELLOW}https://postiz.${BASE_DOMAIN}${C_NC}"
 echo -e " > Short Video Maker: ${C_YELLOW}https://svm.${BASE_DOMAIN}${C_NC}"
-echo -e " > Traefik ICE Console: ${C_YELLOW}https://traefik.${BASE_DOMAIN}${C_NC}"
+echo -e " > Консоль Traefik: ${C_YELLOW}https://traefik.${BASE_DOMAIN}${C_NC}"
 echo ""
-log_jack_in "Allow daemons 1-2 minutes to calibrate and establish secure connection."
-echo -e "${C_GREEN}Stay safe on the Net, choom.${C_NC}"
+log_jack_in "Дай демонам пару минут на калибровку и установку защищенного соединения."
+echo -e "${C_GREEN}Не теряйся в Сети, чумба.${C_NC}"
