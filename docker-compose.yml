@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v2.11}
+    image: traefik:${TRAFIK_VERSION:-v2.11}
     container_name: traefik
     restart: unless-stopped
     command:
@@ -91,31 +91,36 @@ services:
       - web
       - internal
 
-  # --- НОВЫЙ, РАБОЧИЙ БЛОК ---
-gitroom:
-  image: ghcr.io/gitroom-hq/api:latest
-  container_name: gitroom
-  restart: unless-stopped
-  environment:
-    - DATABASE_URL=postgresql://${POSTIZ_USER:-admin}:${POSTIZ_PASSWORD}@postgres:5432/${POSTIZ_DB:-main_db}?schema=public
-    - REDIS_HOST=redis
-    - REDIS_PORT=6379
-    - NEXTAUTH_URL=https://postiz.${BASE_DOMAIN}
-    - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY}
-  depends_on:
-    postgres:
-      condition: service_healthy
-    redis:
-      condition: service_healthy
-  labels:
-    - "traefik.enable=true"
-    - "traefik.http.routers.postiz.rule=Host(`postiz.${BASE_DOMAIN}`)"
-    - "traefik.http.routers.postiz.entrypoints=websecure"
-    - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-    - "traefik.http.services.postiz.loadbalancer.server.port=3000"
-  networks:
-    - web
-    - internal
+  postiz:
+    image: ghcr.io/gitroomhq/postiz-app:latest
+    container_name: postiz
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
+      - REDIS_URL=redis://redis:6379
+      - MAIN_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
+      - FRONTEND_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
+      - NEXT_PUBLIC_BACKEND_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}/api
+      - JWT_SECRET=${N8N_ENCRYPTION_KEY}
+      - STORAGE_PROVIDER=local
+      - UPLOAD_DIRECTORY=/uploads
+      - NEXT_PUBLIC_UPLOAD_DIRECTORY=/uploads
+    volumes:
+      - ./data/postiz-uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}`)"
+      - "traefik.http.routers.postiz.entrypoints=websecure"
+      - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
+      - "traefik.http.services.postiz.loadbalancer.server.port=5000"
+    networks:
+      - web
+      - internal
 
   short-video-maker:
     image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
