@@ -16,8 +16,7 @@ RUN apk add --no-cache --virtual .build-deps \
     py3-pip \
     libffi-dev \
     openssl-dev \
-    ffmpeg \
-    && pip3 install --upgrade pip
+    ffmpeg
 
 # Установка Python-библиотек с кэшированием
 COPY requirements.txt /tmp/
