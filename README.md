@@ -6,7 +6,7 @@
 
 ## ✨ Возможности
 
-* ✅ Установка `n8n`, `Postgres`, `Redis`, `Traefik`, `Telegram-бота`
+* ✅ Установка `n8n`, `Postgres`, `Redis`, `Traefik`, `Telegram-бота` `postiz` `short-video-maker`
 * ✅ Кастомный Docker-образ `n8n` со всеми зависимостями
 * ✅ Telegram-бот:
 
@@ -22,7 +22,7 @@
 **1. Запусти одну команду:**
 
 ```bash
-bash <(curl -s https://raw.githubusercontent.com/r0ckerboy/n8n-installer/refs/heads/main/install.sh)
+bash <(curl -s https://raw.githubusercontent.com/r0ckerboy/n8n-beget-install/refs/heads/main/install.sh)
 ```
 
 **2. Введи данные:**
