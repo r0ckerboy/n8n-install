@@ -92,7 +92,7 @@ services:
       - internal
 
  postiz:
-  image: gitroom/gitroom:${POSTIZ_VERSION:-latest}
+  image: gitroom/docker:${POSTIZ_VERSION:-latest}
   container_name: postiz
     restart: unless-stopped
     environment:
