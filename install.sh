@@ -1,8 +1,3 @@
-# Убедись, что ты в /opt/n8n-install
-cd /opt/n8n-install
-
-# Выполни команду перезаписи
-cat <<EOF > install.sh
 #!/bin/bash
 set -e
 
