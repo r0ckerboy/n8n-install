@@ -4,7 +4,7 @@
 #
 #   Скрипт "Космодром в Коробке"
 #   Автор: Твой бро-нейросеть
-#   Версия: 1.0 (Финальная)
+#   Версия: 1.1 (Госприемка)
 #   Описание: Полностью автоматическая установка контент-завода на чистый сервер Ubuntu.
 #   Включает: Docker, Docker Compose, Traefik (с авто-SSL), n8n, Postiz,
 #   и все необходимые базы данных и кэши в изолированных контейнерах.
@@ -18,8 +18,8 @@ echo -e '
      /_______________/|
     /_______________//|
    /_______________///|  Запускаем сборку "Космодрома в Коробке"!
-  /_______________////|  Это финальная, полностью автономная
- /_______________/////|  версия. Пристегнись.
+  /_______________////|  Версия "Госприемка". Проверка систем
+ /_______________/////|  и установка всех зависимостей с нуля.
 /________________////
 |_______________|/
 \033[0m
@@ -33,28 +33,35 @@ NC='\033[0m'
 
 # --- Функция установки Docker и Docker Compose ---
 install_docker() {
-    if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
+    if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
         echo -e "${YELLOW}Docker или Docker Compose не найдены. Начинаю установку...${NC}"
-        apt-get update
-        apt-get install -y ca-certificates curl gnupg lsb-release
         
-        # Добавление GPG ключа Docker
+        # 1. Обновляем пакеты и ставим зависимости
+        echo "--> Обновление списка пакетов..."
+        apt-get update -qq
+        echo "--> Установка необходимых пакетов..."
+        apt-get install -y ca-certificates curl gnupg
+        
+        # 2. Добавляем официальный GPG ключ Docker
+        echo "--> Добавление GPG ключа Docker..."
         install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
         chmod a+r /etc/apt/keyrings/docker.gpg
 
-        # Настройка репозитория
+        # 3. Настраиваем репозиторий Docker
+        echo "--> Настройка репозитория Docker..."
         echo \
           "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-          $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+          $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+          tee /etc/apt/sources.list.d/docker.list > /dev/null
         
-        apt-get update
+        # 4. Устанавливаем Docker Engine
+        echo "--> Повторное обновление и установка Docker Engine..."
+        apt-get update -qq
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         
-        # Установка
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-        
-        # Проверка
-        if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
+        # 5. Финальная проверка
+        if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
             echo -e "${RED}❌ Не удалось установить Docker. Прерываю операцию.${NC}"
             exit 1
         fi
@@ -86,57 +93,44 @@ main() {
     fi
 
     # --- Шаг 3: Генерация конфигурации ---
-    echo -e "\n${YELLOW}🛠️ Создаю сборочный цех: папки и файлы конфигурации...${NC}"
+    echo -e "\n${YELLOW}🛠️ Создаю сборочный цех в /opt/content-factory...${NC}"
     
-    # Создаем главную директорию
     mkdir -p /opt/content-factory
     cd /opt/content-factory
 
-    # Создаем структуру под-папок
     mkdir -p traefik_data/logs data/{n8n,postgres_n8n,redis_n8n,postiz,postgres_postiz,redis_postiz} videos
 
-    # Генерируем случайные, безопасные пароли
     POSTGRES_N8N_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
     POSTGRES_POSTIZ_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
     POSTIZ_ADMIN_PASSWORD=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
 
-    # Создаем .env файл с секретами
     cat <<EOF > .env
 # --- ОБЩИЕ ---
 TZ=Europe/Moscow
-
 # --- TRAEFIK ---
-TRAEFIK_ACME_EMAIL=${LETSENCRYPT_EMAIL}
-
+LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
 # --- N8N ---
 N8N_HOST=${N8N_HOST}
 POSTGRES_N8N_DB=n8n
 POSTGRES_N8N_USER=n8n
 POSTGRES_N8N_PASSWORD=${POSTGRES_N8N_PASSWORD}
-
 # --- POSTIZ ---
 POSTIZ_HOST=${POSTIZ_HOST}
-POSTIZ_ADMIN_EMAIL=${LETSENCRYPT_EMAIL}
 POSTIZ_ADMIN_PASSWORD=${POSTIZ_ADMIN_PASSWORD}
 POSTGRES_POSTIZ_DB=postiz
 POSTGRES_POSTIZ_USER=postiz
 POSTGRES_POSTIZ_PASSWORD=${POSTGRES_POSTIZ_PASSWORD}
 EOF
 
-    # Создаем статическую конфигурацию для Traefik
     cat <<EOF > traefik_data/traefik.yml
 global:
   checkNewVersion: true
-  sendAnonymousUsage: false
-
 log:
   level: INFO
   filePath: "/logs/traefik.log"
-
 api:
   dashboard: true
-  insecure: true # Внимание: дашборд будет доступен на порту 8080. В проде лучше защитить!
-
+  insecure: true # Дашборд доступен на порту 8080 (только с сервера). Для внешней доступности нужна доп. настройка
 entryPoints:
   web:
     address: ":80"
@@ -147,12 +141,10 @@ entryPoints:
           scheme: https
   websecure:
     address: ":443"
-
 providers:
   docker:
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
-
 certificatesResolvers:
   letsencrypt:
     acme:
@@ -162,7 +154,6 @@ certificatesResolvers:
         entryPoint: web
 EOF
 
-    # Создаем главный docker-compose.yml
     cat <<EOF > docker-compose.yml
 version: '3.9'
 
@@ -175,7 +166,7 @@ services:
     ports:
       - "80:80"
       - "443:443"
-      # - "8080:8080" # Раскомментируй, чтобы получить доступ к дашборду Traefik
+      # - "127.0.0.1:8080:8080" # Раскомментируй для доступа к дашборду Traefik с сервера
     volumes:
       - ./traefik_data/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./traefik_data/letsencrypt:/letsencrypt
@@ -183,8 +174,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - proxy
-    labels:
-      - "traefik.enable=true"
 
   # --- КОМАНДНЫЙ ЦЕНТР: N8N ---
   n8n:
@@ -205,10 +194,10 @@ services:
       - QUEUE_BULL_REDIS_PORT=6379
     volumes:
       - ./data/n8n:/home/node/.n8n
-      - ./videos:/videos # Общая папка с видео
+      - ./videos:/videos
     networks:
-      - proxy
-      - internal
+      - proxy # Подключен к внешней сети для приема трафика от Traefik
+      - internal # Подключен к внутренней для общения с базами
     depends_on:
       - postgres_n8n
       - redis_n8n
@@ -294,16 +283,6 @@ services:
     networks:
       - internal
 
-  # --- СБОРОЧНЫЙ ЦЕХ: SHORT VIDEO MAKER (шаблон для запуска) ---
-  short-video-maker:
-    image: ghcr.io/ouo-app/short-video-maker:latest
-    volumes:
-      - ./videos:/app/videos
-    working_dir: /app/videos
-    # Этот сервис не имеет портов и не запускается постоянно.
-    # Вызывается из n8n командой:
-    # docker-compose run --rm short-video-maker --help
-    
 networks:
   proxy:
     name: proxy
@@ -317,10 +296,10 @@ EOF
     # --- Шаг 4: Запуск ---
     echo -e "\n${YELLOW}🚀 Запускаю двигатели... Скачиваю образы и поднимаю сервисы. Это может занять несколько минут...${NC}"
     
-    docker-compose up -d
+    docker compose up -d
 
     # --- Финальный вывод ---
-    SERVER_IP=$(curl -s ifconfig.me)
+    SERVER_IP=$(curl -s -4 https://ifconfig.me)
     echo -e "\n\n${GREEN}🎉🎉🎉 ПОЕХАЛИ! Твой контент-завод в космосе! 🎉🎉🎉${NC}"
     echo -e "-----------------------------------------------------------------"
     echo -e "           ${YELLOW}!!! ВАЖНО: СЛЕДУЮЩИЙ ШАГ !!!${NC}"
@@ -336,8 +315,9 @@ EOF
     echo -e "   - ${YELLOW}Пароль:${NC} ${POSTIZ_ADMIN_PASSWORD}"
     echo -e "-----------------------------------------------------------------"
     echo -e "\nДля управления используй команды из папки /opt/content-factory:"
-    echo -e "  'docker-compose logs -f' - посмотреть логи"
-    echo -e "  'docker-compose down'    - остановить завод"
+    echo -e "  'docker compose logs -f' - посмотреть логи"
+    echo -e "  'docker compose down'    - остановить завод"
+    echo -e "  'docker compose run --rm [service_name] [command]' - для разовых команд"
     echo -e "\n${GREEN}Удачных полетов, бро! Теперь это не просто набор скриптов. Это настоящий продукт.${NC}"
 }
 
