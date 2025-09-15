@@ -91,16 +91,16 @@ services:
       - web
       - internal
 
- postiz:
-  image: gitroom/docker:${POSTIZ_VERSION:-latest}
-  container_name: postiz
+  postiz:
+    image: gitroom/docker:${POSTIZ_VERSION:-latest}
+    container_name: postiz
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - NEXTAUTH_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
-      - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY} # Используем тот же ключ для простоты
+      - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,13 +145,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - internal
-
-volumes:
-  postgres-data:
-  n8n-data:
-  letsencrypt-data:
-  redis-data:
-  videos-data:
 
 networks:
   web:
