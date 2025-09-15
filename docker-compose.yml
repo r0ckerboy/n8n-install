@@ -42,7 +42,6 @@ services:
     networks:
       - internal
 
-  # --- НОВЫЙ СЕРВИС REDIS ---
   redis:
     image: redis:alpine
     container_name: redis
@@ -53,6 +52,7 @@ services:
       - internal
 
   n8n:
+    # Для n8n мы по-прежнему собираем кастомный образ, чтобы был ffmpeg
     build:
       context: .
       dockerfile: Dockerfile.n8n
@@ -61,7 +61,7 @@ services:
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
-      - DB_POSTGRESDB_PORT=5432 # Стандартный порт Postgres
+      - DB_POSTGRESDB_PORT=5432
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
@@ -83,33 +83,31 @@ services:
       - web
       - internal
 
+  # <<< ИЗМЕНЕНИЕ ЗДЕСЬ
   postiz:
-    build:
-      context: ./postiz
-      dockerfile: Dockerfile
+    # Заменили build на image с правильным публичным образом
+    image: postiz/postiz
     container_name: postiz
     restart: unless-stopped
-    # --- ДОБАВЛЕНЫ ПЕРЕМЕННЫЕ ДЛЯ ПОДКЛЮЧЕНИЯ К REDIS ---
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     depends_on:
-      - redis # --- ДОБАВЛЕНА ЗАВИСИМОСТЬ ОТ REDIS ---
+      - redis
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ}.${BASE_DOMAIN}`)"
       - "traefik.http.routers.postiz.entrypoints=websecure"
       - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-      - "traefik.http.services.postiz.loadbalancer.server.port=8000"
-    # --- ДОБАВЛЕНА ВНУТРЕННЯЯ СЕТЬ ДЛЯ СВЯЗИ С REDIS ---
+      - "traefik.http.services.postiz.loadbalancer.server.port=3000" # Postiz слушает порт 3000
     networks:
       - web
       - internal
 
+  # <<< И ИЗМЕНЕНИЕ ЗДЕСЬ
   short-video-maker:
-    build:
-      context: ./short-video-maker
-      dockerfile: Dockerfile
+    # Тоже заменяем build на image. Используем образ от автора репозитория
+    image: r0ckerboy/short-video-maker:latest
     container_name: short-video-maker
     restart: unless-stopped
     environment:
@@ -129,7 +127,7 @@ volumes:
   postgres-data:
   n8n-data:
   letsencrypt-data:
-  redis-data: # --- ДОБАВЛЕН ТОМ ДЛЯ ХРАНЕНИЯ ДАННЫХ REDIS ---
+  redis-data:
 
 networks:
   web:
