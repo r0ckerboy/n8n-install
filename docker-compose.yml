@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   traefik:
     image: traefik:${TRAEFIK_VERSION:-v2.11}
@@ -93,9 +91,9 @@ services:
       - web
       - internal
 
-  postiz:
-    image: gitroomhq/postiz-app:${POSTIZ_VERSION:-latest}
-    container_name: postiz
+ postiz:
+  image: gitroom/gitroom:${POSTIZ_VERSION:-latest}
+  container_name: postiz
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
