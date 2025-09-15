@@ -91,30 +91,31 @@ services:
       - web
       - internal
 
-  postiz:
-    image: gitroom/docker:${POSTIZ_VERSION:-latest}
-    container_name: postiz
-    restart: unless-stopped
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - NEXTAUTH_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
-      - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.postiz.rule=Host(`${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}`)"
-      - "traefik.http.routers.postiz.entrypoints=websecure"
-      - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
-      - "traefik.http.services.postiz.loadbalancer.server.port=3000"
-    networks:
-      - web
-      - internal
+  # --- НОВЫЙ, РАБОЧИЙ БЛОК ---
+gitroom:
+  image: ghcr.io/gitroom-hq/api:latest
+  container_name: gitroom
+  restart: unless-stopped
+  environment:
+    - DATABASE_URL=postgresql://${POSTIZ_USER:-admin}:${POSTIZ_PASSWORD}@postgres:5432/${POSTIZ_DB:-main_db}?schema=public
+    - REDIS_HOST=redis
+    - REDIS_PORT=6379
+    - NEXTAUTH_URL=https://postiz.${BASE_DOMAIN}
+    - NEXTAUTH_SECRET=${N8N_ENCRYPTION_KEY}
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  labels:
+    - "traefik.enable=true"
+    - "traefik.http.routers.postiz.rule=Host(`postiz.${BASE_DOMAIN}`)"
+    - "traefik.http.routers.postiz.entrypoints=websecure"
+    - "traefik.http.routers.postiz.tls.certresolver=letsencrypt"
+    - "traefik.http.services.postiz.loadbalancer.server.port=3000"
+  networks:
+    - web
+    - internal
 
   short-video-maker:
     image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
