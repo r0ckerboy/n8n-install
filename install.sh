@@ -96,6 +96,8 @@ log_jack_in "Создаю хранилища и дата-крепость..."
 mkdir -p ./data/{postgres,redis,n8n,letsencrypt,videos}
 touch ./data/letsencrypt/acme.json
 chmod 600 ./data/letsencrypt/acme.json
+log_jack_in "Взламываю права доступа для демона n8n..."
+chown -R 1000:1000 ./data/n8n
 
 # Сборка и запуск
 log_jack_in "Компилирую кастомный демон n8n... (может занять время)"
