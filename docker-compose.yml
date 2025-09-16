@@ -92,14 +92,13 @@ services:
       - web
       - internal
 
-    postiz:
+  postiz:
     image: ghcr.io/gitroomhq/postiz-app:latest
     container_name: postiz
     restart: unless-stopped
-    # --- ВОТ ОН, НАШ "КОНСТРУКТОР" ---
     command: sh -c "npx prisma migrate deploy && node main.js"
     environment:
-      - DATABASE_URL=postgresql://${POSTG-RES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-main_db}?schema=public
       - REDIS_URL=redis://redis:6379
       - MAIN_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
       - FRONTEND_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
