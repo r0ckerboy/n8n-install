@@ -47,7 +47,7 @@ services:
       timeout: 5s
       retries: 5
 
-    redis:
+  redis:
     image: redis:latest
     container_name: redis
     restart: unless-stopped
