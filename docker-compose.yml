@@ -132,6 +132,10 @@ services:
     restart: unless-stopped
     environment:
       - PEXELS_API_KEY=${PEXELS_API_KEY}
+     # --- РУСИФИКАЦИЯ (настраивается в .env) ---
+      - LANGUAGE=${SVM_LANGUAGE:-ru}
+      - WHISPER_MODEL=${SVM_WHISPER_MODEL:-base}
+      - voice=${SVM_VOICE:-aidar}
     volumes:
       - ./data/videos:/app/data/videos
     labels:
