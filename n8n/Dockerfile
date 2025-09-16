@@ -10,7 +10,7 @@ RUN apk add --no-cache ffmpeg git
 # Копируем скрипт в конкретное, известное место
 COPY --chown=node:node ../install-community-nodes.sh .
 # Делаем его исполняемым
-RUN chmod +x ../install-community-nodes.sh
+RUN chmod +x /home/node/install-community-nodes.sh
 
 # Возвращаем пользователя node для безопасности
 USER node
