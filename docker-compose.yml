@@ -130,6 +130,8 @@ services:
     image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
     container_name: short-video-maker
     restart: unless-stopped
+     ports:
+      - "3123:3123"
     environment:
       - PEXELS_API_KEY=${PEXELS_API_KEY}
      # --- РУСИФИКАЦИЯ (настраивается в .env) ---
