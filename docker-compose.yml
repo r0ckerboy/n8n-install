@@ -65,6 +65,7 @@ services:
     build: ./n8n
     container_name: n8n
     restart: unless-stopped
+    user: "1000:1000"
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
@@ -132,6 +133,7 @@ services:
     image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
     container_name: short-video-maker
     restart: unless-stopped
+    user: "1000:1000"
     environment:
       - PEXELS_API_KEY=${PEXELS_API_KEY}
       - LANGUAGE=${SVM_LANGUAGE:-ru}
