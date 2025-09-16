@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:${TRAFIK_VERSION:-v2.11}
+    image: traefik:${TRAEFIK_VERSION:-v2.11}
     container_name: traefik
     restart: unless-stopped
     command:
@@ -130,11 +130,8 @@ services:
     image: gyoridavid/short-video-maker:${SVM_VERSION:-latest-tiny}
     container_name: short-video-maker
     restart: unless-stopped
-     ports:
-      - "3123:3123"
     environment:
       - PEXELS_API_KEY=${PEXELS_API_KEY}
-     # --- РУСИФИКАЦИЯ (настраивается в .env) ---
       - LANGUAGE=${SVM_LANGUAGE:-ru}
       - WHISPER_MODEL=${SVM_WHISPER_MODEL:-base}
       - voice=${SVM_VOICE:-baya}
