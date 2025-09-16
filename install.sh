@@ -23,7 +23,7 @@ cat << "EOF"
 ( К | О | Н | Т | Е | Н | Т ) ( З | А )( В | О | Д )    
  \_/ \_/ \_/ \_/ \_/ \_/ \_/   \_/ \_/  \_/ \_/ \_/     
 
-> [СИСТЕМА ОНЛАЙН]: K O H T E H T - Z A V O D
+> [СИСТЕМА ОНЛАЙН]: K O N T E N T - З А В О Д
 > [СТАТУС]: ЗАГРУЗКА... // NIGHT CITY v2.0.77
 EOF
 echo -e "${C_NC}"
@@ -96,8 +96,6 @@ log_jack_in "Создаю хранилища и дата-крепость..."
 mkdir -p ./data/{postgres,redis,n8n,letsencrypt,videos,postiz-uploads}
 touch ./data/letsencrypt/acme.json
 chmod 600 ./data/letsencrypt/acme.json
-log_jack_in "Взламываю права доступа для демона n8n..."
-chown -R 1000:1000 ./data/n8n
 
 # Сборка и запуск
 log_jack_in "Компилирую кастомный демон n8n... (может занять время)"
