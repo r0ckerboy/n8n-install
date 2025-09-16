@@ -47,11 +47,10 @@ services:
       timeout: 5s
       retries: 5
 
-  redis:
-    image: redis:${REDIS_VERSION:-7-alpine}
+    redis:
+    image: redis:latest # <<< ЗАМЕНЯЕМ ОБРАЗ НА САМЫЙ СТАБИЛЬНЫЙ
     container_name: redis
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning --dir /data
     volumes:
       - ./data/redis:/data
     networks:
