@@ -102,9 +102,13 @@ services:
       - FRONTEND_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}
       - NEXT_PUBLIC_BACKEND_URL=https://${SUBDOMAIN_POSTIZ:-postiz}.${BASE_DOMAIN}/api
       - JWT_SECRET=${N8N_ENCRYPTION_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - STORAGE_PROVIDER=local
       - UPLOAD_DIRECTORY=/uploads
       - NEXT_PUBLIC_UPLOAD_DIRECTORY=/uploads
+      - IS_GENERAL="true"
+      - DISABLE_REGISTRATION="false"
     volumes:
       - ./data/postiz-uploads:/uploads
     depends_on:
