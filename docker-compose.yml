@@ -51,6 +51,7 @@ services:
     image: redis:latest
     container_name: redis
     restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning --dir /data
     volumes:
       - ./data/redis:/data
     networks:
